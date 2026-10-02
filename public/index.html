@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What the Shell</title>
+  <link rel="stylesheet" href="/games/whattheshell/style.css">
+  <script defer src="/games/whattheshell/i18n.js"></script>
+  <script defer src="/games/whattheshell/engine.js"></script>
+  <script defer src="/games/whattheshell/whattheshell.js"></script>
+</head>
+<body>
+  <main>
+    <header><a href="/" id="brand">What the Shell</a><div><select id="language" aria-label="Language"><option value="es">Español</option><option value="en">English</option><option value="eo">Esperanto</option></select></div></header>
+    <p class="eyebrow">WHAT THE SHELL · TEAM GAME</p>
+    <h1 data-i18n="title"></h1><p class="intro" data-i18n="intro"></p>
+    <section class="connection"><span id="indicator"></span><strong id="status" role="status" aria-live="polite"></strong><button id="refresh" data-i18n="refresh" disabled></button></section>
+    <p id="sequence" class="meta"></p>
+    <p id="created-at" class="meta"></p>
+    <p id="turns-completed" class="meta"></p>
+    <p id="last-turn-at" class="meta"></p>
+    <p id="turn-countdown" class="meta" role="timer" aria-live="off"></p>
+    <button id="start-game" data-i18n="startGame" hidden></button>
+    <p id="game-result" class="meta" role="status" aria-live="polite"></p>
+    <div class="layout"><section class="board-panel"><div class="legend"><span data-i18n="white"></span><span data-i18n="black"></span></div><div id="board" class="board"></div><p id="preview" role="status" data-i18n="boardHint"></p><div id="ballot-actions"></div></section><aside><h2 data-i18n="team"></h2><p data-i18n="slotsHint"></p><div id="slots"></div><p class="note" data-i18n="scope"></p></aside></div>
+    <dialog id="config"><form id="claim"><h2 data-i18n="claimTitle"></h2><label id="alias-field"><span data-i18n="alias"></span><input id="alias" maxlength="60" required autocomplete="nickname"></label><label id="pin-field" hidden><span data-i18n="reservedPin"></span><input id="claim-pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code"></label><button id="claimSubmit" data-i18n="claim"></button></form>
+      <p id="error" role="alert"></p><button id="close" type="button" data-i18n="close"></button>
+    </dialog>
+  </main>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoic3lzdGVtIiwiaWQiOiJ1LTQ1OTU1OTc0ZDc2OGQwNjgiLCJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwibmFtZSI6IkFsaWNlIiwidGllciI6ImZyZWUiLCJpYXQiOjE3ODU3NjE5NjksImV4cCI6MTc4NTc2NTU2OX0.9fcCV2bin67dsUz2eL_sc79nb_ixEcuxmlQLCUrSdgg",
+  "identity": {
+    "type": "system",
+    "id": "u-45955974d768d068",
+    "provider": "web",
+    "email": "alice@example.com",
+    "name": "Alice",
+    "alias": "Alice",
+    "username": "alice",
+    "tier": "free",
+    "permissions": [
+      "*"
+    ],
+    "superadmin": false,
+    "controlledBy": null,
+    "isTemp": false,
+    "hasWebIdentity": true,
+    "invitationData": null,
+    "authType": "user"
+  },
+  "expiresAt": "2026-08-03T13:59:29.427Z",
+  "credentials": {
+    "username": "alice",
+    "password": "alice123"
+  },
+  "createdAt": "2026-08-03T12:59:29.428Z"
+}

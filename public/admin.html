@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What the Shell · Administración</title>
+  <link rel="stylesheet" href="/games/whattheshell/style.css">
+  <script defer src="/games/whattheshell/i18n.js"></script>
+  <script defer src="/admin/admin.js"></script>
+</head>
+<body>
+  <main>
+    <header><a href="/games/whattheshell/">What the Shell</a><button id="logout" data-admin-i18n="adminLogout" hidden></button></header>
+    <h1 data-admin-i18n="adminTitle">Preparar puestos de juego</h1>
+    <p data-admin-i18n="adminIntro">Vincula cuentas subrogadas existentes a los cinco puestos de una secuencia. Para reservar un puesto, define un alias y un PIN de cuatro cifras.</p>
+    <form id="login"><label><span data-admin-i18n="adminPassword">Contraseña de administración</span><input id="password" type="password" autocomplete="current-password" required></label><button data-admin-i18n="adminLogin">Entrar</button></form>
+    <section id="workspace" hidden>
+      <form id="sequence-form"><label><span data-admin-i18n="adminSequence">SeqId</span><input id="sequence-id" autocomplete="off" required maxlength="128"></label><button data-admin-i18n="adminLoadSequence">Cargar secuencia</button></form>
+      <p id="status" role="status"></p>
+      <form id="slots-form" hidden><div id="slot-rows"></div><button>Guardar asignación</button></form>
+    </section>
+  </main>
+</body>
+</html>

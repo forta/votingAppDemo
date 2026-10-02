@@ -1,0 +1,9 @@
+[
+  {
+    "sequenceId": "REPLACE_WITH_FRESH_SEQUENCE_ID",
+    "apiKeyId": "REPLACE_WITH_ASSIGNED_API_KEY_ID",
+    "secretEnv": "WTS_GAME_ONE_SECRET",
+    "pollIntervalMs": 3000,
+    "lang": "es"
+  }
+]
