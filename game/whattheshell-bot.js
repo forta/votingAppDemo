@@ -4,7 +4,8 @@
 /**
  * Runs the What the Shell sequence bot against the voting backend.
  * The bot chooses white before each team ballot, resolves both moves together,
- * and retains rules-engine state in memory while a paused game is resumed.
+ * and stores rules-engine checkpoints in the sequence so a paused game can be
+ * resumed after the bot process restarts.
  */
 
 const { randomInt } = require('node:crypto');
@@ -34,7 +35,12 @@ function readArguments(args, env = process.env) {
   return options;
 }
 
-function randomSource(seed) { let state = seed >>> 0; return () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; }; }
+function randomSource(seed, restoredState) {
+  let state = restoredState === undefined ? seed >>> 0 : restoredState >>> 0;
+  const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; };
+  random.getState = () => state;
+  return random;
+}
 function formatCell(cell) { if (cell === null || cell === undefined) return 'none'; const value = Number(cell); if (!Number.isInteger(value) || value < 0 || value >= 81) return String(cell); return `(${'abcdefghj'[value % 9]}, ${Math.floor(value / 9) + 1})`; }
 function choicesFor(cells) { return cells.map(cell => ({ type: 'text', text: String(cell) })); }
 function createBallotCommand(options, sequence, turn, cells) {
@@ -64,9 +70,24 @@ async function run(options, dependencies = {}) {
   if (!dependencies.token && (!login.access_token || login.identity?.type !== 'apikey' || (login.identity.apiKeyId || login.identity.id) !== options.apiKeyId)) throw new Error('The supplied credentials are not the requested API key.');
   const token = dependencies.token || login.access_token; let sequence = await command(`seqs get --id=${options.sequenceId}`, token);
   if (sequence.botUserId !== options.apiKeyId || sequence.botMode !== 'sequence_bot') throw new Error('Assign this API key to the sequence in sequence_bot mode first.');
+  if (sequence.state === 'finished') return { status: 'finished', turns: sequence.currentTurn || 0 };
   if (!['waiting', 'playing', 'paused'].includes(sequence.state)) throw new Error(`Sequence must be waiting, playing or paused (state: ${sequence.state}).`);
-  if ((sequence.ballotIds || []).length) throw new Error('This first version starts only on a fresh sequence.');
-  let game = engine.createGame(); const random = randomSource(options.seed ?? randomInt(0x100000000)); const history = [];
+  const saved = await command(`seqs seq-state-get --id=${sequence.seqId}`, token);
+  let checkpoint = saved?.seqState || null;
+  if (checkpoint && (checkpoint.application !== 'whattheshell' || checkpoint.version !== 1)) {
+    throw new Error('The sequence state belongs to another application or an unsupported What the Shell state version.');
+  }
+  if (!checkpoint && (sequence.ballotIds || []).length) {
+    throw new Error('This sequence has ballots but no What the Shell checkpoint; it cannot be safely resumed.');
+  }
+  const seed = checkpoint?.seed ?? options.seed ?? randomInt(0x100000000);
+  const random = randomSource(seed, checkpoint?.randomState);
+  let game = checkpoint ? engine.createGame(checkpoint.game) : engine.createGame();
+  let history = [...(sequence.turnHistory || [])];
+  const saveCheckpoint = async next => {
+    checkpoint = { application: 'whattheshell', version: 1, ...next };
+    await command(`seqs seq-state-set --id=${sequence.seqId} --value=${quote(checkpoint)}`, token);
+  };
   const persist = state => command(`seqs state --id=${sequence.seqId} --state=${state} --history=${quote(history)}`, token);
   const waitUntilPlaying = async () => {
     while (sequence.state === 'paused') {
@@ -89,17 +110,35 @@ async function run(options, dependencies = {}) {
     }
   };
   const finish = async (outcome, reason) => {
+    if (checkpoint?.completed) return { status: 'finished', reason, turns: game.turn, outcome };
     const message = reason === 'inactivity' ? translate('gameInactive') : outcome.winner
       ? translate('gameWon', { color: translate(outcome.winner) }) : translate('gameDraw');
     output(message);
-    // A final acknowledgment is a regular ballot; only the host closes it.
-    const ending = await command(`ballots create --title=${quote(translate('gameEndTitle'))} --space=${sequence.spaceId} --seq=${sequence.seqId} --state=ready --options=${quote([{ type: 'text', text: translate('accept') }])} --descriptionJson=${quote(message)}`, token);
-    history.push({ turn: game.turn, ballotId: ending.ballotId, ending: true, reason, board: [...game.board], eggNumbers: { ...game.eggNumbers }, outcome });
+    let ending = checkpoint?.ending;
+    if (!ending) {
+      ending = { ballotId: null, reason, outcome, message };
+      await saveCheckpoint({ ...checkpoint, ending });
+    }
+    if (!ending.ballotId) {
+      const newestBallotId = sequence.ballotIds?.at(-1);
+      let ballotId = newestBallotId && newestBallotId !== checkpoint.lastProcessedBallotId ? newestBallotId : null;
+      if (!ballotId) {
+        // The final acknowledgment is a regular ballot; only the host closes it.
+        const created = await command(`ballots create --title=${quote(translate('gameEndTitle'))} --space=${sequence.spaceId} --seq=${sequence.seqId} --state=ready --options=${quote([{ type: 'text', text: translate('accept') }])} --descriptionJson=${quote(message)}`, token);
+        ballotId = created.ballotId;
+      }
+      ending = { ...ending, ballotId };
+      await saveCheckpoint({ ...checkpoint, ending });
+    }
+    if (!history.some(entry => entry.ballotId === ending.ballotId)) {
+      history.push({ turn: game.turn, ballotId: ending.ballotId, ending: true, reason, board: [...game.board], eggNumbers: { ...game.eggNumbers }, outcome });
+    }
     await persist('playing');
     const closed = await waitForClosure(ending.ballotId);
     if (!closed) return { status: sequence.state, turns: game.turn, outcome };
     // Assigned bots use seqs state; seqs finish is creator-only.
     await persist('finished');
+    await saveCheckpoint({ ...checkpoint, ending: null, completed: true });
     return { status: 'finished', reason, turns: game.turn, outcome };
   };
   output(`What the Shell bot connected to ${sequence.seqId}`);
@@ -112,20 +151,52 @@ async function run(options, dependencies = {}) {
     if (sequence.state !== 'playing') return { status: sequence.state, turns: 0 };
     output('Game started.');
   }
-  for (let turn = 0; turn < options.maxTurns;) {
+  if (!checkpoint) {
+    checkpoint = {
+      application: 'whattheshell', version: 1, seed, randomState: random.getState(),
+      game, pending: null, lastProcessedBallotId: null, lastOutcome: null, ending: null, completed: false
+    };
+    await saveCheckpoint(checkpoint);
+  }
+  if (checkpoint.historyEntryPending) {
+    if (!history.some(entry => entry.ballotId === checkpoint.historyEntryPending.ballotId)) history.push(checkpoint.historyEntryPending);
+    await persist(sequence.state);
+    await saveCheckpoint({ ...checkpoint, historyEntryPending: null });
+  }
+  if (checkpoint.ending || ['finished', 'draw'].includes(game.state)) {
+    const ending = checkpoint.ending;
+    return finish(ending?.outcome || checkpoint.lastOutcome || { state: game.state, winner: game.winner }, ending?.reason || game.state);
+  }
+  for (let processedTurns = 0; processedTurns < options.maxTurns;) {
     const legal = engine.legalCells(game); if (!legal.length) break;
-    // The two players move simultaneously. The machine commits its white
-    // move before the ballot is opened and must not inspect the later winner.
-    const white = choose(game, random);
-    const ballot = await command(createBallotCommand(options, sequence, turn, legal), token);
-    output(`Turn ${turn + 1}: ballot ${ballot.ballotId} (${legal.length} cells)`);
-    const closed = await waitForClosure(ballot.ballotId);
-    if (!closed) return { status: sequence.state, turns: turn };
-    const results = await command(`ballots results --id=${ballot.ballotId}`, token);
+    let pending = checkpoint.pending;
+    if (!pending) {
+      // Persist the private machine move before opening a ballot so a process
+      // restart cannot choose a different move for an already-open turn.
+      pending = { turn: game.turn, white: choose(game, random), ballotId: null };
+      await saveCheckpoint({ ...checkpoint, game, seed, randomState: random.getState(), pending });
+    }
+    let ballotId = pending.ballotId;
+    if (!ballotId) {
+      const newestBallotId = sequence.ballotIds?.at(-1);
+      if (newestBallotId && newestBallotId !== checkpoint.lastProcessedBallotId) {
+        ballotId = newestBallotId;
+      } else {
+        const ballot = await command(createBallotCommand(options, sequence, pending.turn, legal), token);
+        ballotId = ballot.ballotId;
+        output(`Turn ${pending.turn + 1}: ballot ${ballotId} (${legal.length} cells)`);
+      }
+      pending = { ...pending, ballotId };
+      await saveCheckpoint({ ...checkpoint, pending });
+    }
+    const closed = await waitForClosure(ballotId);
+    if (!closed) return { status: sequence.state, turns: game.turn };
+    const results = await command(`ballots results --id=${ballotId}`, token);
     if (Number(results.ballotSummary?.totalVotes || 0) === 0) {
       // A zero-vote round is not a move: keep the board and turn untouched.
       output('No votes received. Pausing without applying either move.');
       await persist('paused');
+      await saveCheckpoint({ ...checkpoint, game, pending: null, lastProcessedBallotId: ballotId });
       sequence = await command(`seqs get --id=${sequence.seqId}`, token);
       if (!await waitUntilPlaying()) return { status: sequence.state, turns: game.turn };
       output('Game resumed at the same board position.');
@@ -136,7 +207,7 @@ async function run(options, dependencies = {}) {
     const selected = winnerIndex(results, legal);
     const publicState = await command(`slotseqs public --seq=${sequence.seqId}`, token);
     const completed = publicState.lastCompletedBallot;
-    const votesBySlot = completed?.ballotId === ballot.ballotId ? completed.votes : [];
+    const votesBySlot = completed?.ballotId === ballotId ? completed.votes : [];
     if (votesBySlot.length) {
       output('Votes received:');
       votesBySlot.forEach(slot => output(`  Slot ${slot.slotNumber}${slot.alias ? ` (${slot.alias})` : ''}: ${formatCell(legal[slot.choiceId])}`));
@@ -146,20 +217,23 @@ async function run(options, dependencies = {}) {
     const winnerText = selected === null ? null : legal[selected];
     output(`Winning option: ${winnerText === null ? 'none' : formatCell(winnerText)}`);
     const black = selected === null ? null : legal[selected];
-    output(`Computer move (white): ${formatCell(white)}`);
-    const resolved = engine.resolveTurn(game, { black, white }); game = resolved.game;
-    history.push({ turn: game.turn, ballotId: ballot.ballotId, black, white, winner: black, board: [...game.board], eggs: [...game.eggs], eggNumbers: { ...game.eggNumbers }, nextEggNumber: game.nextEggNumber, resolvedAt: new Date().toISOString(), outcome: resolved.outcome, events: resolved.events });
+    output(`Computer move (white): ${formatCell(pending.white)}`);
+    const resolved = engine.resolveTurn(game, { black, white: pending.white }); game = resolved.game;
+    const historyEntry = { turn: game.turn, ballotId, black, white: pending.white, winner: black, board: [...game.board], eggs: [...game.eggs], eggNumbers: { ...game.eggNumbers }, nextEggNumber: game.nextEggNumber, resolvedAt: new Date().toISOString(), outcome: resolved.outcome, events: resolved.events };
+    history.push(historyEntry);
+    await saveCheckpoint({ ...checkpoint, game, pending: null, lastProcessedBallotId: ballotId, lastOutcome: resolved.outcome, historyEntryPending: historyEntry });
     sequence = await command(`seqs get --id=${sequence.seqId}`, token);
     // Sequence bots may record history and lifecycle state, while the backend
     // owns ballot membership and turn counters.
     if (['paused', 'finished', 'deleted'].includes(sequence.state)) return { status: sequence.state, turns: game.turn };
     await persist('playing');
-    output(`Resolved turn ${game.turn}: team=${formatCell(black)}, machine=${formatCell(white)}`);
+    await saveCheckpoint({ ...checkpoint, historyEntryPending: null });
+    output(`Resolved turn ${game.turn}: team=${formatCell(black)}, machine=${formatCell(pending.white)}`);
     const outcome = resolved.outcome;
     if (outcome.state === 'finished' || outcome.state === 'draw') {
       return finish(outcome, outcome.state);
     }
-    turn += 1;
+    processedTurns += 1;
   }
   await persist('paused'); return { status: 'paused', reason: 'max-turns', turns: game.turn };
 }

@@ -8,17 +8,27 @@ const { run, formatCell } = require('../game/whattheshell-bot');
 function fakeClient(events = [], initialState = 'playing') {
   const sequence = { seqId: 'seq-test', spaceId: 'space-test', botUserId: 'pk-test', botMode: 'sequence_bot', state: initialState, ballotIds: [], turnHistory: [] };
   const commands = [];
-  const ballot = { ballotId: 'ballot-test', state: 'closed', closed: true };
   return {
     sequence, commands,
     async _httpRequest() { return { access_token: 'token', identity: { id: 'pk-test', apiKeyId: 'pk-test', type: 'apikey' } }; },
     async _execRemote(command) {
       commands.push(command);
       if (command.startsWith('seqs get ')) return { success: true, data: { ...sequence } };
-      if (command.startsWith('ballots create ')) { events.push('ballot-create'); sequence.ballotIds.push(ballot.ballotId); return { success: true, data: { ballotId: ballot.ballotId } }; }
-      if (command.startsWith('ballots select ')) return { success: true, data: ballot };
+      if (command.startsWith('seqs seq-state-get ')) return { success: true, data: { seqId: sequence.seqId, seqState: sequence.seqState || null } };
+      if (command.startsWith('seqs seq-state-set ')) {
+        const valueMatch = command.match(/--value='(.*)'$/);
+        sequence.seqState = JSON.parse(valueMatch[1]);
+        return { success: true, data: { seqId: sequence.seqId, seqState: sequence.seqState } };
+      }
+      if (command.startsWith('ballots create ')) {
+        events.push('ballot-create');
+        const ballotId = `ballot-${sequence.ballotIds.length + 1}`;
+        sequence.ballotIds.push(ballotId);
+        return { success: true, data: { ballotId } };
+      }
+      if (command.startsWith('ballots select ')) return { success: true, data: { ballotId: command.split('--id=')[1], state: 'closed', closed: true } };
       if (command.startsWith('ballots results ')) return { success: true, data: { finalResult: { hasWinner: false, winningOption: null }, ballotSummary: { totalVotes: 1 } } };
-      if (command.startsWith('slotseqs public ')) return { success: true, data: { ballot: null, lastCompletedBallot: { ballotId: ballot.ballotId, votes: [] }, slots: [] } };
+      if (command.startsWith('slotseqs public ')) return { success: true, data: { ballot: null, lastCompletedBallot: { ballotId: sequence.ballotIds.at(-1), votes: [] }, slots: [] } };
       if (command.startsWith('seqs state ')) {
         const stateMatch = command.match(/--state=([^\s]+)/);
         const historyMatch = command.match(/--history='(.*)'$/);
@@ -101,6 +111,42 @@ test('bot waits for the sequence to be started before opening its first ballot',
   assert.ok(output.includes('Waiting for a slot holder to start the game...'));
   assert.ok(output.includes('Game started.'));
   assert.equal(client.commands.filter(command => command.startsWith('ballots create ')).length, 1);
+});
+
+test('bot resumes from seqState after a completed turn and retains sequence history', async () => {
+  const client = fakeClient();
+  const options = { sequenceId: 'seq-test', apiKeyId: 'pk-test', secret: 'private', pollIntervalMs: 250, maxTurns: 1, seed: 1, lang: 'en' };
+  const first = await run(options, { client, wait: async () => {}, chooseMachineMove: () => 40, output: () => {} });
+  assert.equal(first.turns, 1);
+  assert.equal(client.sequence.seqState.game.turn, 1);
+  assert.equal(client.sequence.turnHistory.length, 1);
+
+  client.sequence.state = 'playing';
+  const second = await run(options, { client, wait: async () => {}, chooseMachineMove: () => 41, output: () => {} });
+  assert.equal(second.turns, 2);
+  assert.equal(client.sequence.seqState.game.turn, 2);
+  assert.equal(client.sequence.turnHistory.length, 2);
+  assert.equal(client.commands.filter(command => command.startsWith('ballots create ')).length, 2);
+});
+
+test('bot resumes a pending turn with its persisted machine move and existing ballot', async () => {
+  const client = fakeClient();
+  const game = engine.createGame();
+  client.sequence.ballotIds.push('ballot-in-flight');
+  client.sequence.seqState = {
+    application: 'whattheshell', version: 1, seed: 1, randomState: 1,
+    game, pending: { turn: 0, white: 40, ballotId: null }, lastProcessedBallotId: null,
+    lastOutcome: null, ending: null, completed: false
+  };
+  let machineChoices = 0;
+  const result = await run({ sequenceId: 'seq-test', apiKeyId: 'pk-test', secret: 'private', pollIntervalMs: 250, maxTurns: 1, lang: 'en' }, {
+    client, wait: async () => {}, chooseMachineMove: () => { machineChoices += 1; return 41; }, output: () => {}
+  });
+  assert.equal(result.turns, 1);
+  assert.equal(machineChoices, 0);
+  assert.equal(client.sequence.seqState.game.board[40], engine.WHITE);
+  assert.equal(client.sequence.ballotIds.length, 1);
+  assert.equal(client.sequence.turnHistory[0].ballotId, 'ballot-in-flight');
 });
 
 test('a zero-vote ballot pauses without applying either move and retries from the same board', async () => {
