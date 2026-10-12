@@ -1,138 +1,164 @@
-# What the Shell multi-bot example
+# VotingAppDemo: Generic Sequence Game Player
 
-Standalone Node.js example using the voting system through its public CLI
-client. The voting backend remains a separate service. This project serves the
-player site, discovers sequences assigned to the `whattheshell` functionality,
-and starts one in-memory bot when someone connects to a game.
+`VotingAppDemo/` is a Node.js game-player service and API example. It contains
+a generic browser player plus server-side adapters for What the Shell and Ink.
+It has no database connection. Reads and writes to the voting system go through
+`POST /cli/execute` on the main backend. The service can run as a separate Node
+process or be mounted inside the main backend process.
 
-## Development setup
+The browser can discover sequences assigned to configured integrations, open a
+sequence by ID, and claim one of its anonymous game slots. The server keeps
+API-key credentials, short-lived tokens, and running-bot handles in process
+memory; credentials and tokens are never sent to the browser. Ink story files
+are downloaded for the assigned sequence through `seqs file-download` and
+compiled in memory.
 
-Requires Node.js 18 or newer and the dependencies declared in `CLI/package.json`.
-The `CLI/` directory is the public CLI client used to call the voting backend.
-This project does not import backend modules. The active explore-and-connect
-flow does not connect to MongoDB; the optional provisioning/admin modules
-described below are separate.
+## Code layout
 
-When developing from the main repository, link the CLI directory if needed and
-install its dependencies:
-
-```powershell
-npm run link:cli
-npm --prefix CLI install
+```text
+VotingAppDemo/
+├── server.js                 Standalone HTTP entry point
+├── lib/
+│   ├── config.js             Environment loading and game configuration
+│   ├── voting-api.js         Authenticated command gateway client
+│   ├── game-manager.js       Discovery, bot startup, and in-memory lifecycle
+│   ├── player-router.js      Generic player HTTP routes and command allowlist
+│   └── backend-integration.js Legacy WTS-only router for /games/wts_multibot/
+├── game/
+│   ├── whattheshell-bot.js   Persistent-state WTS sequence bot
+│   ├── whattheshell-engine.js Pure WTS rules and turn resolution
+│   ├── whattheshell-strategy.js Machine-move selection
+│   ├── whattheshell-request.js Retry handling for rate-limited requests
+│   ├── whattheshell-launcher.js Operator launcher for a new WTS game
+│   └── inkjs-bot.js          Ink story-to-ballot sequence bot
+├── scripts/inkjs-story.js    Ink source/JSON loading and compilation
+├── public/                   Explorer, generic player, legacy WTS view, assets
+├── runner.js                 Operator runner for a configured WTS bot list
+├── CLI/                      Bundled/shared CLI support and local scenarios
+└── tests/                    Unit and HTTP integration tests
 ```
 
-For local development, create `votingAppDemo/.env` and fill in the game bot's
-credentials. Do not commit this file. It loads automatically.
-For deployments, inject the values or set `MULTIBOT_ENV_FILE` to a file
-outside this directory. Then start the site:
+`server.js` starts the separate service on the configured host and port. In the
+main backend, `GAME_PLAYER_ENABLED=true` mounts the generic player routes under
+`/games/play/` on the backend's existing port. The older
+`WTS_MULTIBOT_ENABLED=true` route at `/games/wts_multibot/` uses
+`lib/backend-integration.js`, which is WTS-only. The separate process and the
+generic integrated player both load WTS and Ink credentials from their server
+environment and use `lib/game-manager.js`.
+
+The browser flow is split between `public/explore.html` plus `explore.js` and
+`public/player/index.html` plus `player/play.js`. The latter obtains the public
+sequence/slot projection and uses the game functionality to select a renderer.
+Anonymous player requests are restricted to the public `slotseqs` commands in
+`lib/player-router.js`; bot credentials stay on the server. A supplied sequence
+ID opens the player view directly, while bot startup still requires that the
+sequence use a configured integration key. The generic player calls the bot
+API independently through the server-side `GameManager`.
+
+`lib/voting-api.js` is the only application API client: it exchanges configured
+API-key credentials through the `auth token` command and submits all subsequent
+commands to `/cli/execute`. `CLI/` contains the bundled CLI client and local
+operator/test material. The WTS launcher uses its CLI helper to provision a
+demo sequence; the web player and game bots use `lib/voting-api.js` at runtime.
+No player or bot connects to MongoDB directly.
+
+## Configuration
+
+For local development, put these values in `VotingAppDemo/.env` or inject them
+into the process environment. Deployments can set `WTS_ENV_FILE` to an
+environment file outside the project. Do not commit real credentials.
+
+```env
+WTS_GAME_HOST=127.0.0.1
+WTS_GAME_PORT=3100
+WTS_GAME_PUBLIC_URL=http://localhost:3100
+WTS_CLI_SERVER_URL=http://localhost:3000
+WTS_LANGUAGE=es
+WTS_BOT_POLL_INTERVAL_MS=5000
+WTS_BOT_MAX_TURNS=500
+
+WTS_BOT_API_KEY_ID=pk_...
+WTS_BOT_SECRET=...
+INK_BOT_API_KEY_ID=pk_...
+INK_BOT_SECRET=...
+```
+
+Each configured key must be active, use `sequence_bot` mode, and be registered
+for its functionality (`whattheshell` or `ink`) in the main backend. If a key is
+omitted, that functionality is not included in discovery. No MongoDB URI, owner
+account, or `surrogate_controller` credential is used by this service.
 
 ```powershell
-cd votingAppDemo
+cd VotingAppDemo
 npm start
 ```
 
-The site listens on `http://127.0.0.1:3100` by default. The explore-and-connect
-flow uses these environment values:
+The service listens on `http://127.0.0.1:3100` by default. Open its root page to
+explore games, or open `/?seq=<sequence-id>` for a particular game.
+
+## Integrated mode in the main backend
+
+To serve the player at `/games/play/` from the main backend's own process and
+port, set this in the main backend's `.env` and restart it:
 
 ```env
-CLI_SERVER_URL=http://localhost:3000
-WTS_FUNCTIONALITY_ID=whattheshell
-WTS_BOT_API_KEY_ID=pk_...
-WTS_BOT_SECRET=...
+GAME_PLAYER_ENABLED=true
 ```
 
-`GAME_HOST`, `GAME_PORT` and `GAME_PUBLIC_URL` control the local listener and
-shareable URL. `WTS_FUNCTIONALITY_ID` defaults to `whattheshell`.
+Copy `.env_integrated` to `VotingAppDemo/.env` before starting the main backend.
+The backend loads the player credentials from that file only when
+`GAME_PLAYER_ENABLED=true`. The port remains the main backend's port; no second
+player process or `GAME_PLAYER_SERVICE_URL` is involved. Set the flag to `false`
+or remove it to disable the integrated player. `WTS_MULTIBOT_ENABLED` remains a
+separate flag for the older WTS-only route at `/games/wts_multibot/`.
 
-The bot API key must be active, use `sequence_bot` mode, and be the key
-registered for the functionality. No owner login or `surrogate_controller`
-credentials are needed to discover and play already prepared sequences.
+For standalone mode, copy `.env_isolated` to `VotingAppDemo/.env` and run
+`npm start` from this directory. That process listens on port 3100 by default.
 
-## Explore and play
+## Sequence setup
 
-Open the site root to list sequences visible to the configured game bot. The
-backend only returns sequences assigned to that API key; the site exposes a
-small public projection and never sends the key or token to the browser.
-Selecting a sequence asks the site process to start its bot. The bot waits for
-a slot holder to claim a slot and press **Start game**.
+Create a sequence in the voting app and choose either the `whattheshell` or
+`ink` functionality. The backend assigns the registered integration key and
+provisions the required surrogate slots. For Ink, upload the declared `story`
+file before starting the sequence. The player discovers the sequence
+automatically; users claim a slot and start the game from the player page.
 
-Before it can be played, a sequence must have the `whattheshell` functionality,
-be assigned to the corresponding sequence bot, and have its five game slots
-configured. The bot stores an opaque What the Shell checkpoint in the sequence
-through the backend's `seqState` API. When run directly again, it can restore
-the board, random generator and any in-flight machine move. A sequence with
-ballots but no compatible checkpoint is rejected because its game state cannot
-be reconstructed safely. The web explorer currently rejects sequences that
-already have ballots, including ones with a checkpoint; web-based recovery is
-therefore not yet available.
+## Bot restart and persisted state
 
-## Creating a game sequence
+The HTTP service itself keeps no durable registry of active bots. The
+`GameManager` stores tokens and running tasks in in-memory maps; both disappear
+when its process exits. A restarted service can authenticate again and discover
+sequences, but the current `connect()` path accepts only sequences with no
+ballots. Therefore the web-managed bot cannot currently reattach to a game
+after its first ballot has been created.
 
-Create a dedicated space, then create its sequence and select the approved
-`whattheshell` functionality. Register this functionality with five slots,
-which is the number of players What the Shell supports. The backend reuses the
-owner's oldest active surrogate accounts, creates only enough to reach the
-declared count, adds any missing accounts to the space and maps them to the
-sequence slots. The new sequence is then ready to open from the site explorer.
-Players claim slots and press **Start game**.
+The What the Shell bot has a separate recovery mechanism. It writes its board,
+random-generator state, pending machine move, and ballot checkpoint to the
+sequence's `seqState` through `/cli/execute`. Re-running the WTS bot directly
+for that sequence can rebuild its in-flight turn, provided the checkpoint is
+present and supported. The generic player's current `GameManager` gate still
+prevents reconnecting that existing game from the explorer or player page.
 
-The current backend allows only one active sequence per space. A surrogate can
-be mapped once per sequence and reused across other sequences. A mapping can
-only be unassigned while its sequence is fresh and waiting. The same
-functionality, bot credentials, and surrogate accounts are reusable across
-games; no new integration or API key is needed. Creating a game checks the
-owner's surrogate-account quota and the space's member quota before provisioning.
+The Ink bot currently does not persist InkJS story state. Its `Story` instance
+lives in process memory, and it rejects sequences that already have ballots.
+After a process restart it cannot restore the previous scene from the voting
+history alone. Restart and recovery behavior for isolated and
+`VotingAppDemo`-managed bots is a planned v1.015 acceptance area; test WTS and
+Ink separately because their persistence models differ.
 
-## Credential boundary and limitations
+## Layout and checks
 
-The browser sends only public `slotseqs` commands to this server. Bot commands
-run in the Node process through the CLI client. Authentication uses the game
-bot API key, while game rules and UI strings are copied into this project.
-There is no local games database or password-protected game-creation page in
-this workflow.
-
-Each connected sequence gets at most one bot in a running process. The bot
-persists an opaque checkpoint through the backend's `seqState` commands and
-can restore it when run again. However, the current explorer manager rejects a
-sequence that already has ballots, so it does not yet restart a played game
-after a site-process restart. Bots honor upstream `Retry-After` responses; the
-site does not implement a shared request scheduler. The sequence explorer
-currently uses the backend's existing list limit of 20.
-
-## Project structure and modes
-
-- `server.js` serves the player pages and exposes sequence discovery and bot
-  connection endpoints for the explore-and-connect mode.
-- `lib/game-manager.js` lists sequences assigned to the configured bot key and
-  starts at most one bot per sequence in this process.
-- `game/whattheshell-engine.js`, `whattheshell-strategy.js` and
-  `whattheshell-bot.js` contain the game rules, machine strategy and bot loop.
-  `whattheshell-launcher.js` is a separate manual tool that creates a demo
-  sequence and runs a bot for it.
-- `public/` contains the explorer, player page, shared browser engine, styles
-  and translations. The browser sends public `slotseqs` commands to
-  `/cli/execute`; in standalone mode this server proxies only the allowed
-  public slot commands to the voting backend.
-- `CLI/` is the public CLI client used by the server-side bot and launcher.
-- `runner.js` is an alternative operator tool for running bots against a fixed
-  JSON list of sequence IDs; it is not used by the web explorer.
-- `lib/admin.js`, `lib/service.js`, `lib/games.js`, `public/admin.*` and
-  `scripts/prepare-db.js` belong to an optional password-protected game
-  provisioning flow. The current explore-and-connect flow does not initialize
-  that service or require its local `games` collection.
-- `tests/` covers the game engine, strategy, bot, game manager and optional
-  provisioning service.
-
-For a future split, the active site needs the public CLI client, the game
-modules, `lib/game-manager.js`, `server.js`, and the player assets in `public/`.
-The runner, launcher and Mongo-backed admin provisioning flow are separate
-entry points and can be included only when that use case is wanted.
-
-Do not distribute the development CLI junction. Replace it with a copy of the
-public CLI source and its package manifest/lockfile. Exclude `.env`, `state/`,
-`contexts/`, `node_modules/`, logs, and credentials.
-
-## Checks
+- `server.js` serves the explorer and player, exposes the game connection API,
+  and forwards only the anonymous slot commands allowed by the player.
+- `lib/voting-api.js` is the only upstream HTTP client. It sends commands to
+  `/cli/execute`, including the API-key token exchange.
+- `lib/game-manager.js` discovers assigned sequences and dispatches to the
+  matching game adapter.
+- `game/` contains the What the Shell and Ink sequence runners.
+- `public/` contains the generic player, explorer, styles, and translations.
+- `runner.js` is an optional operator tool for running a fixed list of WTS
+  sequences; it uses the same `/cli/execute` gateway as the web service. It is
+  not the multi-game web service and does not load Ink adapters.
 
 ```powershell
 npm test

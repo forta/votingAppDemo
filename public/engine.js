@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
-  // Minimal browser-side board helper. The authoritative rules and simultaneous
-  // move resolution live in cli-scripts/whattheshell-engine.js.
+  /* Minimal browser-side board helper used by the legacy WTS renderer.
+   * The sequence bot's game/whattheshell-engine.js owns authoritative rules. */
   const SIZE = 9;
   function createGame() {
     return { version: 1, size: SIZE, turn: 0, board: Array(SIZE * SIZE).fill(null) };

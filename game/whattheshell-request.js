@@ -1,5 +1,10 @@
 'use strict';
 
+/**
+ * Retries only HTTP 429 responses using the backend's retry delay. Other
+ * failures are surfaced because replaying a write may duplicate its effect.
+ */
+
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // A 429 rejects the operation before it runs. Do not replay transport errors

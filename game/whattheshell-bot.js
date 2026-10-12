@@ -4,8 +4,8 @@
 /**
  * Runs the What the Shell sequence bot against the voting backend.
  * The bot chooses white before each team ballot, resolves both moves together,
- * and stores rules-engine checkpoints in the sequence so a paused game can be
- * resumed after the bot process restarts.
+ * and stores the board, random-generator state, pending move, and ballot
+ * checkpoint in seqState so a direct bot restart can resume the same turn.
  */
 
 const { randomInt } = require('node:crypto');
@@ -59,16 +59,21 @@ function winnerIndex(results, cells) {
 
 /** Authenticate, wait for the game, and run turns until completion or pause. */
 async function run(options, dependencies = {}) {
-  const client = dependencies.client || new (require('../CLI/lib'))(); const wait = dependencies.wait || sleep;
+  const client = dependencies.client || require('../lib/voting-api').createVotingApiClient(dependencies.serverUrl || process.env.WTS_CLI_SERVER_URL); const wait = dependencies.wait || sleep;
   const choose = dependencies.chooseMachineMove || chooseMachineMove;
   const messages = require(`../public/whattheshell_${options.lang || 'es'}.json`);
   const translate = (key, values = {}) => Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), messages[key] || key);
   const output = dependencies.output || console.log; const command = async (text, token) => {
     const result = await request(() => client._execRemote(text, token), wait); if (!result?.success) throw new Error(result?.error || `Command failed: ${text}`); return result.data;
   };
-  const login = dependencies.token ? null : await request(() => client._httpRequest('POST', '/api/auth/login', { type: 'user', credentials: { email: options.apiKeyId, password: options.secret } }), wait);
-  if (!dependencies.token && (!login.access_token || login.identity?.type !== 'apikey' || (login.identity.apiKeyId || login.identity.id) !== options.apiKeyId)) throw new Error('The supplied credentials are not the requested API key.');
-  const token = dependencies.token || login.access_token; let sequence = await command(`seqs get --id=${options.sequenceId}`, token);
+  let token = dependencies.token;
+  if (!token) {
+    if (typeof client.loginApiKey !== 'function') throw new Error('API key authentication must use the /cli/execute gateway.');
+    const login = await request(() => client.loginApiKey(options.apiKeyId, options.secret), wait);
+    if (!login.access_token || login.identity?.type !== 'apikey' || (login.identity.apiKeyId || login.identity.id) !== options.apiKeyId) throw new Error('The supplied credentials are not the requested API key.');
+    token = login.access_token;
+  }
+  let sequence = await command(`seqs get --id=${options.sequenceId}`, token);
   if (sequence.botUserId !== options.apiKeyId || sequence.botMode !== 'sequence_bot') throw new Error('Assign this API key to the sequence in sequence_bot mode first.');
   if (sequence.state === 'finished') return { status: 'finished', turns: sequence.currentTurn || 0 };
   if (!['waiting', 'playing', 'paused'].includes(sequence.state)) throw new Error(`Sequence must be waiting, playing or paused (state: ${sequence.state}).`);
@@ -239,5 +244,9 @@ async function run(options, dependencies = {}) {
 }
 
 function usage() { return 'Usage: node cli-scripts/whattheshell-bot.js --sequenceId=<id> --apiKeyId=<id> [--secret=<secret>] [--poll-interval=3000] [--max-turns=500] [--seed=123] [--lang=es]'; }
-if (require.main === module) Promise.resolve().then(() => run(readArguments(process.argv.slice(2)))).catch(error => { console.error(`What the Shell bot stopped: ${error.message}`); console.error(usage()); process.exitCode = 1; });
+if (require.main === module) Promise.resolve().then(() => {
+  const { loadEnvironment, configuration } = require('../lib/config');
+  loadEnvironment();
+  return run(readArguments(process.argv.slice(2)), { serverUrl: configuration().serverUrl });
+}).catch(error => { console.error(`What the Shell bot stopped: ${error.message}`); console.error(usage()); process.exitCode = 1; });
 module.exports = { readArguments, choicesFor, winnerIndex, chooseMachineMove, formatCell, run };

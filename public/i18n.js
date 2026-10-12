@@ -1,5 +1,6 @@
 (function () {
   'use strict';
+  /* Language selection and translation lookup for the legacy WTS-specific page. */
   const supported = ['en', 'es', 'eo'];
   const storageKey = 'whattheshell:language';
   function getCurrentLanguage() {

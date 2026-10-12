@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <base href="./">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Partida · Juegos</title>
+  <link rel="stylesheet" href="player/style.css">
+  <script defer src="player/play.js"></script>
+</head>
+<body>
+  <main>
+    <header><a href="./" id="brand">Juegos</a><select id="language" aria-label="Language"><option value="es">Español</option><option value="en">English</option><option value="eo">Esperanto</option></select></header>
+    <p class="eyebrow" id="game-kind"></p>
+    <h1 data-i18n="title"></h1>
+    <p id="game-description" class="intro" data-i18n="intro"></p>
+    <section class="status-card">
+      <p id="status" role="status" aria-live="polite"></p>
+      <p id="sequence" class="meta"></p>
+      <button id="refresh" data-i18n="refresh"></button>
+      <button id="start" data-i18n="startGame" hidden></button>
+    </section>
+    <section id="slots-panel">
+      <h2 data-i18n="slotsTitle"></h2>
+      <p id="slots-hint" class="muted" data-i18n="slotsHint"></p>
+      <div id="slots" class="slots"></div>
+      <button id="release" data-i18n="releaseSlot" hidden></button>
+    </section>
+    <section id="renderer-panel" class="renderer-panel" hidden>
+      <label for="renderer" data-i18n="rendererLabel"></label>
+      <select id="renderer">
+        <option value="generic" data-i18n="rendererGeneric"></option>
+        <option value="ink" data-i18n="rendererInk"></option>
+        <option value="whattheshell" data-i18n="rendererWts"></option>
+      </select>
+      <p class="muted" data-i18n="rendererHint"></p>
+      <p id="renderer-error" class="error" role="status"></p>
+    </section>
+    <div id="game-view" class="game-view" data-game-handler="generic" aria-live="polite" hidden></div>
+    <footer><a href="./" data-i18n="gamesLink"></a></footer>
+  </main>
+  <dialog id="slot-dialog">
+    <form id="slot-form">
+      <h2 id="dialog-title"></h2>
+      <label id="alias-field"><span data-i18n="aliasLabel"></span><input id="alias" maxlength="60" autocomplete="nickname"></label>
+      <label id="pin-field"><span data-i18n="pinLabel"></span><input id="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code"></label>
+      <p id="dialog-error" class="error" role="alert"></p>
+      <div class="actions"><button id="claim" type="submit" data-i18n="claimSlot"></button><button id="cancel" type="button" data-i18n="cancel"></button></div>
+    </form>
+  </dialog>
+  <dialog id="access-dialog">
+    <form id="access-code-form">
+      <h2 data-i18n="accessCodeTitle"></h2>
+      <p data-i18n="accessCodePrompt"></p>
+      <label for="access-code" data-i18n="accessCodeLabel"></label>
+      <input id="access-code" name="accessCode" maxlength="5" minlength="5" pattern="[A-Za-z]{5}" autocomplete="one-time-code" required>
+      <p id="access-code-error" class="error" role="alert"></p>
+      <div class="actions">
+        <button type="submit" data-i18n="accessCodeSubmit"></button>
+        <button id="access-code-cancel" type="button" data-i18n="cancel"></button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

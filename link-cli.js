@@ -1,5 +1,10 @@
 'use strict';
 
+/**
+ * Creates the local CLI directory link expected by this standalone checkout.
+ * It never overwrites an existing CLI directory or link.
+ */
+
 const fs = require('node:fs');
 const path = require('node:path');
 const link = path.join(__dirname, 'CLI');

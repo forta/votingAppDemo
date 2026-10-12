@@ -10,7 +10,7 @@ function fakeClient(events = [], initialState = 'playing') {
   const commands = [];
   return {
     sequence, commands,
-    async _httpRequest() { return { access_token: 'token', identity: { id: 'pk-test', apiKeyId: 'pk-test', type: 'apikey' } }; },
+    async loginApiKey() { return { access_token: 'token', identity: { id: 'pk-test', apiKeyId: 'pk-test', type: 'apikey' } }; },
     async _execRemote(command) {
       commands.push(command);
       if (command.startsWith('seqs get ')) return { success: true, data: { ...sequence } };

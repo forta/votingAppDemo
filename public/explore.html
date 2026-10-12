@@ -1,21 +1,31 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>What the Shell · Games</title>
-  <link rel="stylesheet" href="/games/whattheshell/style.css">
-  <script defer src="/games/whattheshell/i18n.js"></script>
-  <script defer src="/explore.js"></script>
+  <base href="./">
+  <title>Juegos · Kunsido</title>
+  <link rel="stylesheet" href="player/style.css">
+  <script defer src="explore.js"></script>
 </head>
 <body>
   <main class="explorer">
-    <header><a href="/" id="brand">What the Shell</a><label class="language"><span id="language-label"></span><select id="language" aria-label="Language"><option value="es">Español</option><option value="en">English</option><option value="eo">Esperanto</option></select></label></header>
-    <p class="eyebrow">WHAT THE SHELL · TEAM GAME</p>
-    <h1 id="explore-title"></h1>
-    <p class="intro" id="explore-intro"></p>
-    <section class="connection"><span id="indicator"></span><strong id="status" role="status" aria-live="polite"></strong><button id="refresh"></button></section>
+    <header><a href="./" id="brand">Kunsido · Juegos</a><label class="language"><span>Idioma</span>
+      <select id="language" aria-label="Idioma"><option value="es">Español</option><option value="en">English</option><option value="eo">Esperanto</option></select></label></header>
+    <p class="eyebrow">PLAYER MULTIJUEGO</p>
+    <h1 id="title">Explorar partidas</h1>
+    <p id="intro" class="intro">Elige una secuencia disponible para conectarte y jugar.</p>
+    <form id="direct-game-form" class="connection direct-game-form">
+      <label for="sequence-id" id="sequence-id-label">O indica el ID de una secuencia</label>
+      <input id="sequence-id" name="seqId" autocomplete="off" required>
+      <label for="access-secret" id="access-secret-label">Código de acceso (si te lo han dado)</label>
+      <input id="access-secret" name="accessSecret" maxlength="5" pattern="[A-Za-z]{5}" autocomplete="one-time-code">
+      <button id="open-sequence" type="submit">Abrir secuencia</button>
+    </form>
+    <section class="connection"><span id="indicator"></span><strong id="status" role="status" aria-live="polite">Cargando partidas…</strong>
+      <button id="refresh" type="button">Actualizar lista</button></section>
     <section id="games" class="game-list" aria-live="polite"></section>
+    <footer><a href="https://app.kunsido.com/app/">Abrir Kunsido</a></footer>
   </main>
 </body>
 </html>

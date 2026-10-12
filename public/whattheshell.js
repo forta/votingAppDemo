@@ -1,12 +1,14 @@
 (async function () {
   'use strict';
-  // This page reads a public sequence projection and never receives the bot
-  // key. Anonymous slot actions use only the player's occupation ID and PIN.
+  /* Legacy WTS-specific browser view. It reads public sequence projections and
+   * sends anonymous slot actions; bot credentials remain on the server. */
   const $ = id => document.getElementById(id);
   const lang = window.AppClient.i18n.getCurrentLanguage();
-  const text = await fetch(`/games/whattheshell/whattheshell_${lang}.json`).then(r => r.json());
+  const text = await fetch(`./whattheshell_${lang}.json`).then(r => r.json());
   const t = (key, values = {}) => Object.entries(values).reduce((v, [k, x]) => v.replaceAll(`{${k}}`, x), text[key] || key);
   document.documentElement.lang = lang; document.title = text.title;
+  const isIntegrated = location.pathname.startsWith('/games/wts_multibot/');
+  document.getElementById('brand').href = isIntegrated ? '/games/wts_multibot/' : '/';
   document.querySelectorAll('[data-i18n]').forEach(e => { e.textContent = t(e.dataset.i18n); });
   $('language').value = lang; $('language').onchange = () => window.AppClient.i18n.setLanguage($('language').value);
   let connection = null; let selectedSlot = null; let snapshot = null; let busy = false; let refreshTimer = null; let countdownTimer = null;

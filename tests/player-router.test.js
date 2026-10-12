@@ -1,0 +1,41 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const express = require('express');
+const { createPlayerRouter } = require('../lib/player-router');
+
+test('generic player router works under the main backend path', async t => {
+  const app = express();
+  app.use(express.json({ limit: '8kb' }));
+  app.use('/games/play', createPlayerRouter(express, {
+    async _execRemote(command, token) { return { success: true, command, token }; }
+  }, {
+    gameManager: { async listGames() { return [{ seqId: 'seq-1' }]; }, async connect(seqId) { return { seqId }; } }
+  }));
+  const server = app.listen(0, '127.0.0.1');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await new Promise(resolve => server.once('listening', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}/games/play`;
+
+  const explorer = await fetch(`${origin}/`);
+  assert.equal(explorer.status, 200);
+  assert.match(await explorer.text(), /Explorar partidas/);
+
+  const player = await fetch(`${origin}/?seq=seq-1`);
+  assert.match(await player.text(), /renderer-panel/);
+
+  const asset = await fetch(`${origin}/player/play.js`);
+  assert.equal(asset.status, 200);
+  assert.match(asset.headers.get('content-type'), /javascript/);
+
+  const games = await fetch(`${origin}/api/games`);
+  assert.deepEqual(await games.json(), { games: [{ seqId: 'seq-1' }] });
+
+  const command = await fetch(`${origin}/cli/execute`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: 'slotseqs public --seq=seq-1' })
+  });
+  assert.equal(command.status, 200);
+  assert.deepEqual(await command.json(), { success: true, command: 'slotseqs public --seq=seq-1', token: null });
+});

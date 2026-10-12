@@ -6,7 +6,6 @@
  * and its bot, then prints the shareable What the Shell game URL.
  */
 
-const Simulator = require('../CLI/lib');
 const bot = require('./whattheshell-bot');
 const request = require('./whattheshell-request');
 
@@ -20,7 +19,11 @@ const loginKey = async (sim, key) => {
 
 /** Provision one standalone game and run its bot in this process. */
 async function main() {
-  const sim = new Simulator(); const context = sim.activeContext;
+  const { loadEnvironment, configuration } = require('../lib/config');
+  loadEnvironment();
+  const config = configuration();
+  const Simulator = require('../CLI/lib');
+  const sim = new Simulator(config.serverUrl); const context = sim.activeContext;
   if (!context) throw new Error('Log in with the CLI first.');
   const ownerToken = await request(() => sim._ensureAuthenticatedForContext(context));
   const owner = sim.contexts[context].identity;
@@ -37,13 +40,13 @@ async function main() {
   await command(`seqs assign-bot --id=${sequence.seqId} --botUserId=${sequenceBot.id}`);
   const mapping = created.surrogates.map((user, index) => ({ slotNumber: index + 1, surrogateUserId: user.userId }));
   await command(`slotseqs configure --seq=${sequence.seqId} --controller=${controller.id} --mapping=${quote(mapping)}`);
-  const gameUrl = new URL('/games/whattheshell/', process.env.GAME_PUBLIC_URL || 'http://localhost:3100');
+  const gameUrl = new URL('/games/whattheshell/', config.publicUrl);
   gameUrl.searchParams.set('seq', sequence.seqId);
   console.log('\nWhat the Shell demo is ready.');
   console.log(`Share this game URL: ${gameUrl.toString()}`);
   console.log(`bot apiKeyId: ${sequenceBot.id}`);
   console.log('The bot is waiting. Claim a slot and press Start on the page when everyone is ready.');
-  await bot.run({ sequenceId: sequence.seqId, apiKeyId: sequenceBot.id, secret: sequenceBot.secret, pollIntervalMs: 3000, maxTurns: 500 });
+  await bot.run({ sequenceId: sequence.seqId, apiKeyId: sequenceBot.id, secret: sequenceBot.secret, pollIntervalMs: 3000, maxTurns: 500 }, { client: sim });
 }
 
 if (require.main === module) main().catch(error => { console.error(`Launcher stopped: ${error.message}`); process.exitCode = 1; });

@@ -3,3 +3,5 @@ node_modules/
 .env
 games.local.json
 data/
+.env_isolated
+.env_integrated
