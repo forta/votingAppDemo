@@ -12,8 +12,18 @@ const { randomInt } = require('node:crypto');
 const engine = require('./whattheshell-engine');
 const { chooseMachineMove } = require('./whattheshell-strategy');
 const request = require('./whattheshell-request');
+const { unwrapCommandData } = require('../lib/command-data');
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+function waitForStopAwareDelay(ms, signal) {
+  if (!signal) return sleep(ms);
+  if (signal.aborted) return Promise.resolve();
+  return new Promise(resolve => {
+    const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener('abort', finish, { once: true });
+  });
+}
 const quote = value => `'${JSON.stringify(value).replace(/'/g, '\\u0027')}'`;
 
 function readArguments(args, env = process.env) {
@@ -59,12 +69,15 @@ function winnerIndex(results, cells) {
 
 /** Authenticate, wait for the game, and run turns until completion or pause. */
 async function run(options, dependencies = {}) {
-  const client = dependencies.client || require('../lib/voting-api').createVotingApiClient(dependencies.serverUrl || process.env.WTS_CLI_SERVER_URL); const wait = dependencies.wait || sleep;
+  const client = dependencies.client || require('../lib/voting-api').createVotingApiClient(dependencies.serverUrl || process.env.WTS_CLI_SERVER_URL);
+  const signal = dependencies.signal;
+  const wait = dependencies.wait || (ms => waitForStopAwareDelay(ms, signal));
   const choose = dependencies.chooseMachineMove || chooseMachineMove;
-  const messages = require(`../public/whattheshell_${options.lang || 'es'}.json`);
+  const messages = require(`./locales/whattheshell_${options.lang || 'es'}.json`);
   const translate = (key, values = {}) => Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), messages[key] || key);
   const output = dependencies.output || console.log; const command = async (text, token) => {
-    const result = await request(() => client._execRemote(text, token), wait); if (!result?.success) throw new Error(result?.error || `Command failed: ${text}`); return result.data;
+    const result = await request(() => client._execRemote(text, token), wait);
+    return unwrapCommandData(result);
   };
   let token = dependencies.token;
   if (!token) {
@@ -86,7 +99,7 @@ async function run(options, dependencies = {}) {
     throw new Error('This sequence has ballots but no What the Shell checkpoint; it cannot be safely resumed.');
   }
   const seed = checkpoint?.seed ?? options.seed ?? randomInt(0x100000000);
-  const random = randomSource(seed, checkpoint?.randomState);
+  let random = randomSource(seed, checkpoint?.randomState);
   let game = checkpoint ? engine.createGame(checkpoint.game) : engine.createGame();
   let history = [...(sequence.turnHistory || [])];
   const saveCheckpoint = async next => {
@@ -97,6 +110,7 @@ async function run(options, dependencies = {}) {
   const waitUntilPlaying = async () => {
     while (sequence.state === 'paused') {
       await wait(options.pollIntervalMs);
+      if (signal?.aborted) return false;
       sequence = await command(`seqs get --id=${sequence.seqId}`, token);
       if (['finished', 'deleted'].includes(sequence.state)) return false;
     }
@@ -105,6 +119,7 @@ async function run(options, dependencies = {}) {
   const waitForClosure = async ballotId => {
     while (true) {
       await wait(options.pollIntervalMs);
+      if (signal?.aborted) return null;
       sequence = await command(`seqs get --id=${sequence.seqId}`, token);
       if (['finished', 'deleted'].includes(sequence.state)) return null;
       if (sequence.state === 'paused' && !await waitUntilPlaying()) return null;
@@ -151,6 +166,7 @@ async function run(options, dependencies = {}) {
     output('Waiting for a slot holder to start the game...');
     while (['waiting', 'paused'].includes(sequence.state)) {
       await wait(options.pollIntervalMs);
+      if (signal?.aborted) return { status: sequence.state, reason: 'shutdown', turns: 0 };
       sequence = await command(`seqs get --id=${sequence.seqId}`, token);
     }
     if (sequence.state !== 'playing') return { status: sequence.state, turns: 0 };
@@ -173,6 +189,18 @@ async function run(options, dependencies = {}) {
     return finish(ending?.outcome || checkpoint.lastOutcome || { state: game.state, winner: game.winner }, ending?.reason || game.state);
   }
   for (let processedTurns = 0; processedTurns < options.maxTurns;) {
+    if (signal?.aborted) return { status: sequence.state, reason: 'shutdown', turns: game.turn };
+    // Reload the durable game checkpoint at each turn boundary. This keeps
+    // seqState authoritative instead of allowing an old in-memory board or
+    // random state to leak into the next ballot.
+    const latestState = await command(`seqs seq-state-get --id=${sequence.seqId}`, token);
+    const latestCheckpoint = latestState?.seqState;
+    if (!latestCheckpoint || latestCheckpoint.application !== 'whattheshell' || latestCheckpoint.version !== 1) {
+      throw new Error('The What the Shell checkpoint is missing or has an unsupported version.');
+    }
+    checkpoint = latestCheckpoint;
+    game = engine.createGame(checkpoint.game);
+    random = randomSource(checkpoint.seed, checkpoint.randomState);
     const legal = engine.legalCells(game); if (!legal.length) break;
     let pending = checkpoint.pending;
     if (!pending) {
@@ -195,6 +223,7 @@ async function run(options, dependencies = {}) {
       await saveCheckpoint({ ...checkpoint, pending });
     }
     const closed = await waitForClosure(ballotId);
+    if (signal?.aborted) return { status: sequence.state, reason: 'shutdown', turns: game.turn };
     if (!closed) return { status: sequence.state, turns: game.turn };
     const results = await command(`ballots results --id=${ballotId}`, token);
     if (Number(results.ballotSummary?.totalVotes || 0) === 0) {

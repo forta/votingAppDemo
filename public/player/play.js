@@ -28,7 +28,6 @@
   let runnerAttempted = false;
   let runnerMessage = null;
   let runnerFailed = false;
-  const slotColors = ['#bc5546', '#4087b5', '#ca9635', '#8b64ae', '#3a947f'];
   const selectionKey = `sequence-play:${seqId}:slot`;
   const rendererKey = `sequence-play:${seqId}:renderer`;
   const accessKey = `sequence-play:${seqId}:access`;
@@ -117,7 +116,8 @@
     const element = $('turn-countdown');
     if (!element) { lastCountdownText = null; return; }
     const ballot = snapshot?.ballot;
-    const deadline = ballot?.closesAt ? Date.parse(ballot.closesAt) : NaN;
+    const deadlineValue = ballot?.phaseClosesAt || ballot?.closesAt;
+    const deadline = deadlineValue ? Date.parse(deadlineValue) : NaN;
     let label = '';
     let expired = false;
     if (Number.isFinite(deadline)) {
@@ -133,11 +133,12 @@
     if (label !== lastCountdownText) { element.textContent = label; lastCountdownText = label; }
   }
 
-  function createTurnHeading(container, active, turn) {
+  function createTurnHeading(container, active, turn, showLastAction = false) {
     const heading = document.createElement('p');
     heading.className = 'eyebrow';
     heading.textContent = active ? t('openTurn') : t('closedTurn');
     container.append(heading);
+    if (showLastAction) appendLastAction(container);
     if (Number.isInteger(turn)) {
       const detail = document.createElement('p');
       detail.className = 'meta';
@@ -149,21 +150,75 @@
   function canVote(ballot) {
     return Boolean(snapshot?.ballot && !snapshot.ballot.closed &&
       (ballot.state || 'ready') === 'ready' && snapshot.sequenceState === 'playing' &&
-      selectedSlot && selectedSlot.votedBallotId !== ballot.ballotId);
+      selectedSlot);
+  }
+
+  function currentVoteText(ballot) {
+    if (!selectedSlot || selectedSlot.votedBallotId !== ballot?.ballotId) return null;
+    if (selectedSlot.abstainedBallotId === ballot.ballotId) return t('currentAbstention');
+    const selected = ballot.options?.find((option, index) => (option.choiceId ?? index) === selectedSlot.proposalChoiceId);
+    return selected ? t('currentVote', { choice: selected.text || t('choice', { number: ballot.options.indexOf(selected) + 1 }) }) : null;
+  }
+
+  function appendCurrentVote(container, ballot) {
+    const value = currentVoteText(ballot);
+    if (!value) return;
+    const current = document.createElement('p');
+    current.className = 'current-vote';
+    current.setAttribute('role', 'status');
+    current.textContent = value;
+    container.append(current);
+  }
+
+  function voteCountsByChoice(ballot) {
+    return new Map((ballot?.voteCounts || [])
+      .filter(item => Number.isInteger(item.choiceId) && Number.isInteger(item.count) && item.count > 0)
+      .map(item => [item.choiceId, item.count]));
+  }
+
+  function appendVoteCount(element, count, label) {
+    if (!count) return;
+    const badge = document.createElement('span');
+    badge.className = 'vote-count';
+    badge.textContent = String(count);
+    badge.setAttribute('aria-hidden', 'true');
+    element.append(badge);
+    element.title = t('votesCount', { count });
+    if (label) element.setAttribute('aria-label', `${label} · ${t('votesCount', { count })}`);
   }
 
   function appendChoiceButtons(container, ballot, isOpen) {
     const list = document.createElement('div');
     list.className = 'choices';
+    const voteCounts = voteCountsByChoice(ballot);
     (ballot.options || []).forEach((option, index) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = option.text || t('choice', { number: index + 1 });
+      const label = option.text || t('choice', { number: index + 1 });
+      button.append(document.createTextNode(label));
+      appendVoteCount(button, voteCounts.get(option.choiceId ?? index), label);
+      if (selectedSlot?.votedBallotId === ballot.ballotId && selectedSlot.abstainedBallotId !== ballot.ballotId
+          && selectedSlot.proposalChoiceId === (option.choiceId ?? index)) button.classList.add('selected-choice');
       button.disabled = !isOpen;
       button.onclick = () => castVote(ballot, option.choiceId ?? index);
       list.append(button);
     });
     container.append(list);
+  }
+
+  function appendAbstainButton(container, ballot, isOpen) {
+    if (!ballot?.allowActiveAbstention) return;
+    const actions = document.createElement('div');
+    actions.className = 'vote-secondary-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'abstain-button';
+    button.textContent = t('abstain');
+    button.setAttribute('aria-pressed', String(selectedSlot?.abstainedBallotId === ballot.ballotId));
+    button.disabled = !isOpen;
+    button.onclick = () => castVote(ballot, null, null, true);
+    actions.append(button);
+    container.append(actions);
   }
 
   function renderStoryHandler(container, ballot, active) {
@@ -180,11 +235,34 @@
       : isOpen ? t('votePrompt') : active ? selectedSlot ? t('waitingForResolution') : t('claimBeforeVote')
         : snapshot.sequenceState === 'finished' ? t('gameFinished') : t('waitingNext');
     container.append(notice);
+    appendCurrentVote(container, ballot);
     appendChoiceButtons(container, ballot, isOpen);
+    appendAbstainButton(container, ballot, isOpen);
   }
 
   function cellLabel(index) {
     return `${'ABCDEFGHJ'[index % 9]}${Math.floor(index / 9) + 1}`;
+  }
+
+  function appendLastAction(container) {
+    const action = snapshot?.lastAction;
+    if (!action) return;
+    const section = document.createElement('section');
+    section.className = 'last-action';
+    const heading = document.createElement('h2');
+    heading.textContent = t(action.functionalityId === 'ink' ? 'lastInkActionHeading' : 'lastActionHeading');
+    const detail = document.createElement('p');
+    if (action.functionalityId === 'whattheshell') {
+      detail.textContent = t('lastWtsAction', {
+        turn: action.turn,
+        team: Number.isInteger(action.teamMove) ? cellLabel(action.teamMove) : t('pass'),
+        machine: Number.isInteger(action.machineMove) ? cellLabel(action.machineMove) : t('pass')
+      });
+    } else if (action.functionalityId === 'ink' && action.choice) {
+      detail.textContent = t('lastInkAction', { turn: action.turn, choice: action.choice });
+    } else return;
+    section.append(heading, detail);
+    container.append(section);
   }
 
   function renderWtsHandler(container, ballot, active) {
@@ -202,25 +280,16 @@
     board.className = 'board';
     const positions = Array.isArray(snapshot.board) && snapshot.board.length === 81 ? snapshot.board : Array(81).fill(null);
     const optionsByCell = new Map((ballot?.options || []).map((option, index) => [Number(option.text), option.choiceId ?? index]));
-    const proposals = new Map();
-    (snapshot.slots || []).forEach(slot => {
-      const option = ballot?.options?.[slot.proposal];
-      const cell = Number(option?.text);
-      if (Number.isInteger(cell) && cell >= 0 && cell < 81) proposals.set(cell, slot);
-    });
+    const voteCounts = voteCountsByChoice(ballot);
     positions.forEach((piece, index) => {
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = `cell${piece ? ` ${piece}` : ''}`;
-      cell.textContent = cellLabel(index);
+      const label = cellLabel(index);
+      cell.append(document.createTextNode(label));
       cell.setAttribute('aria-label', cellLabel(index));
-      const slot = proposals.get(index);
-      if (slot) {
-        cell.classList.add('proposal');
-        cell.style.setProperty('--proposal-color', slotColors[slot.slotNumber - 1]);
-        cell.title = `${t('slot', { number: slot.slotNumber })} · ${slot.alias || ''}`;
-      }
       const choice = optionsByCell.get(index);
+      appendVoteCount(cell, choice === undefined ? 0 : voteCounts.get(choice), label);
       cell.disabled = Boolean(piece) || choice === undefined || !canVote(ballot);
       if (!cell.disabled && selectedSlot?.proposalCell === index) cell.classList.add('selected');
       cell.onclick = () => { if (choice !== undefined) castVote(ballot, choice, index); };
@@ -252,8 +321,11 @@
     notice.id = 'notice';
     notice.setAttribute('role', 'status');
     notice.textContent = selectedSlot?.votedBallotId === ballot?.ballotId ? t('voteAccepted')
-      : canVote(ballot) ? t('votePrompt') : active ? t('waitingForResolution') : t('waitingNext');
+      : canVote(ballot) ? t('votePrompt') : active ? t('waitingForResolution')
+        : !snapshot.ballot && !snapshot.lastCompletedBallot ? t('waitingRunner') : t('waitingNext');
     container.append(notice);
+    appendCurrentVote(container, ballot);
+    appendAbstainButton(container, ballot, canVote(ballot));
   }
 
   function wtsResultText() {
@@ -297,7 +369,10 @@
 
   function renderGame() {
     const container = $('game-view');
-    const ballot = snapshot?.ballot || snapshot?.lastCompletedBallot;
+    const hasWtsBoard = snapshot?.functionalityId === 'whattheshell'
+      && Array.isArray(snapshot.board) && snapshot.board.length === 81;
+    const ballot = snapshot?.ballot || snapshot?.lastCompletedBallot
+      || (hasWtsBoard ? { options: [], voteCounts: [] } : null);
     if (!snapshot || !ballot) {
       container.replaceChildren();
       container.hidden = true;
@@ -307,9 +382,10 @@
     container.hidden = false;
     container.replaceChildren();
     const active = Boolean(snapshot.ballot && !snapshot.ballot.closed);
-    createTurnHeading(container, active, ballot.turn);
     const handler = snapshot.functionalityId || selectedRenderer || 'generic';
     const normalizedHandler = handler === 'whattheshell' ? 'whattheshell' : handler === 'ink' ? 'ink' : 'generic';
+    createTurnHeading(container, active, ballot.turn, normalizedHandler === 'ink');
+    if (normalizedHandler === 'whattheshell') appendLastAction(container);
     if (normalizedHandler === 'whattheshell' && !isWtsCompatible(ballot)) {
       if (!snapshot.functionalityId) {
         selectedRenderer = 'generic';
@@ -456,16 +532,17 @@
   };
 
   async function refreshAfterAction() { busy = false; await refresh(); }
-  async function castVote(ballot, choiceId, proposalCell = null) {
+  async function castVote(ballot, choiceId, proposalCell = null, abstain = false) {
     if (!selectedSlot || !ballot?.ballotId || busy) return;
     busy = true;
     try {
-      const result = await command('vote-public', {
+      const result = await command(abstain ? 'abstain-public' : 'vote-public', {
         seq: seqId, slot: selectedSlot.slotNumber, occupation: selectedSlot.occupationId,
-        pin: selectedSlot.pin, ballot: ballot.ballotId, choice: choiceId, revision: selectedSlot.revision
+        pin: selectedSlot.pin, ballot: ballot.ballotId, ...(abstain ? {} : { choice: choiceId }), revision: selectedSlot.revision
       });
       selectedSlot = { ...selectedSlot, revision: result.revision, expiresAt: result.expiresAt,
-        votedBallotId: ballot.ballotId, proposalCell };
+        votedBallotId: ballot.ballotId, proposalCell,
+        proposalChoiceId: abstain ? null : result.choiceId, abstainedBallotId: abstain ? ballot.ballotId : null };
       saveSelection();
       $('notice').textContent = t('voteAccepted');
     } catch (error) { const notice = $('notice'); if (notice) notice.textContent = error.message; }

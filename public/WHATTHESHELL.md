@@ -15,9 +15,11 @@ The site explorer lists sequences assigned to the configured game
 functionality. Selecting a fresh sequence starts its bot and opens a URL that
 contains the sequence ID. Each sequence represents a separate game:
 
-`http://localhost:3100/games/whattheshell/?seq=<sequence-id>`
+`http://localhost:3100/?seq=<sequence-id>`
 
-The independent multi-bot Node server serves the game page and explorer.
+The generic player explorer and sequence view are served by the independent
+Node service. WTS is rendered by the shared player based on the sequence
+functionality.
 
 ## Rules and turn resolution
 
@@ -63,8 +65,8 @@ The independent multi-bot Node server serves the game page and explorer.
   operations and maps each slot to its surrogate voter. A slot lease lasts two
   minutes after its latest explicit action: claiming, starting/resuming, or
   voting. Merely leaving the page open does not renew it.
-- `public/whattheshell.js` reads the sequence ID from the
-  URL, displays the public board and ballot state, and submits slot actions.
+- `public/player/play.js` reads the sequence ID from the URL, displays the
+  public board and ballot state, and submits slot actions.
   The public projection includes safe ballot-resolution details without
   exposing private individual votes.
 

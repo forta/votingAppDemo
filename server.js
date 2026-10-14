@@ -2,7 +2,7 @@
 
 /**
  * Standalone HTTP entry point for the generic game player. The main backend
- * can mount the same router modules without starting this separate listener.
+ * can mount the same router modules without starting this separate listener. 
  */
 
 const http = require('node:http');
@@ -33,8 +33,14 @@ if (require.main === module) {
     const client = createVotingApiClient(config.serverUrl);
     const gameManager = new GameManager({ client, config });
     const server = createServer(client, { gameManager });
-    server.listen(config.port, config.host, () => console.log(`Generic game player: http://${config.host}:${config.port}`));
-    const close = () => server.close();
+    server.listen(config.port, config.host, () => {
+      console.log(`Generic game player: http://${config.host}:${config.port}`);
+      gameManager.start();
+    });
+    const close = () => {
+      gameManager.stop();
+      server.close();
+    };
     process.once('SIGINT', close);
     process.once('SIGTERM', close);
   })().catch(error => { console.error(`Game service stopped: ${error.message}`); process.exitCode = 1; });

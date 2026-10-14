@@ -29,6 +29,11 @@ test('generic player router works under the main backend path', async t => {
   assert.equal(asset.status, 200);
   assert.match(asset.headers.get('content-type'), /javascript/);
 
+  const explorerScript = await fetch(`${origin}/explore.js?v=test`);
+  assert.equal(explorerScript.status, 200);
+  assert.equal(explorerScript.headers.get('cache-control'), 'no-cache');
+  assert.match(await explorerScript.text(), /created-at/);
+
   const games = await fetch(`${origin}/api/games`);
   assert.deepEqual(await games.json(), { games: [{ seqId: 'seq-1' }] });
 

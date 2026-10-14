@@ -6,7 +6,7 @@
   <base href="./">
   <title>Juegos · Kunsido</title>
   <link rel="stylesheet" href="player/style.css">
-  <script defer src="explore.js"></script>
+  <script defer src="explore.js?v=20261013-2"></script>
 </head>
 <body>
   <main class="explorer">
@@ -24,6 +24,7 @@
     </form>
     <section class="connection"><span id="indicator"></span><strong id="status" role="status" aria-live="polite">Cargando partidas…</strong>
       <button id="refresh" type="button">Actualizar lista</button></section>
+    <p><button id="toggle-unavailable" type="button" hidden></button></p>
     <section id="games" class="game-list" aria-live="polite"></section>
     <footer><a href="https://app.kunsido.com/app/">Abrir Kunsido</a></footer>
   </main>

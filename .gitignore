@@ -1,6 +1,7 @@
 node_modules/
 /CLI/state
 .env
+.env_*
 games.local.json
 data/
 .env_isolated

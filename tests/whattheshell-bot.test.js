@@ -14,11 +14,13 @@ function fakeClient(events = [], initialState = 'playing') {
     async _execRemote(command) {
       commands.push(command);
       if (command.startsWith('seqs get ')) return { success: true, data: { ...sequence } };
-      if (command.startsWith('seqs seq-state-get ')) return { success: true, data: { seqId: sequence.seqId, seqState: sequence.seqState || null } };
+      if (command.startsWith('seqs seq-state-get ')) return { success: true, data: {
+        success: true, data: { seqId: sequence.seqId, seqState: sequence.seqState || null }
+      } };
       if (command.startsWith('seqs seq-state-set ')) {
         const valueMatch = command.match(/--value='(.*)'$/);
         sequence.seqState = JSON.parse(valueMatch[1]);
-        return { success: true, data: { seqId: sequence.seqId, seqState: sequence.seqState } };
+        return { success: true, data: { success: true, data: { seqId: sequence.seqId, seqState: sequence.seqState } } };
       }
       if (command.startsWith('ballots create ')) {
         events.push('ballot-create');
