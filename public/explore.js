@@ -4,20 +4,35 @@
  * sequence ID directly, optionally retaining its access code for the session. */
 
 const translations = {
-  es: { title: 'Explorar partidas', intro: 'Elige una secuencia disponible para conectarte y jugar.', loading: 'Cargando partidas…', refresh: 'Actualizar lista', empty: 'No hay partidas disponibles ahora.', emptyOpenable: 'No hay partidas que se puedan abrir. Hay partidas no recuperables ocultas.', connect: 'Abrir partida', showUnavailable: 'Mostrar partidas no disponibles', hideUnavailable: 'Ocultar partidas no disponibles', notRecoverable: 'No hay un estado de juego compatible para recuperar esta secuencia.', stateUnavailable: 'No se puede abrir en este estado.', error: 'No se pudo cargar la lista de partidas.', seqLabel: 'O indica el ID de una secuencia', secretLabel: 'Código de acceso (si te lo han dado)', openSequence: 'Abrir secuencia' },
-  en: { title: 'Explore games', intro: 'Choose an available sequence to connect and play.', loading: 'Loading games…', refresh: 'Refresh list', empty: 'No games are available right now.', emptyOpenable: 'There are no games you can open. Unrecoverable games are hidden.', connect: 'Open game', showUnavailable: 'Show unavailable games', hideUnavailable: 'Hide unavailable games', notRecoverable: 'No compatible game checkpoint is available for this sequence.', stateUnavailable: 'This sequence cannot be opened in its current state.', error: 'Could not load the game list.', seqLabel: 'Or enter a sequence ID', secretLabel: 'Access code (if provided)', openSequence: 'Open sequence' },
-  eo: { title: 'Esplori ludojn', intro: 'Elektu disponeblan sinsekvon por konektiĝi kaj ludi.', loading: 'Ŝargante ludojn…', refresh: 'Ĝisdatigi liston', empty: 'Neniuj ludoj disponeblas nun.', emptyOpenable: 'Ne estas ludoj malfermeblaj. Nereakireblaj ludoj estas kaŝitaj.', connect: 'Malfermi ludon', showUnavailable: 'Montri ne disponeblajn ludojn', hideUnavailable: 'Kaŝi ne disponeblajn ludojn', notRecoverable: 'Ne ekzistas kongrua ludkontrolpunkto por restarigi ĉi tiun sinsekvon.', stateUnavailable: 'La sinsekvo ne povas malfermiĝi en sia nuna stato.', error: 'Ne eblis ŝargi la ludliston.', seqLabel: 'Aŭ enigu sinsekvan identigilon', secretLabel: 'Alirkodo (se donita)', openSequence: 'Malfermi sinsekvon' }
+  es: { signedInAs: 'Sesión: {name}', title: 'Explorar partidas', intro: 'Elige una secuencia disponible para conectarte y jugar.', loading: 'Cargando partidas…', refresh: 'Actualizar lista', empty: 'No hay partidas disponibles ahora.', emptyOpenable: 'No hay partidas que se puedan abrir. Hay partidas no recuperables ocultas.', connect: 'Abrir partida', showUnavailable: 'Mostrar partidas no disponibles', hideUnavailable: 'Ocultar partidas no disponibles', notRecoverable: 'No hay un estado de juego compatible para recuperar esta secuencia.', stateUnavailable: 'No se puede abrir en este estado.', error: 'No se pudo cargar la lista de partidas.', seqLabel: 'O indica el ID de una secuencia', secretLabel: 'Código de acceso (si te lo han dado)', openSequence: 'Abrir secuencia' },
+  en: { signedInAs: 'Signed in as {name}', title: 'Explore games', intro: 'Choose an available sequence to connect and play.', loading: 'Loading games…', refresh: 'Refresh list', empty: 'No games are available right now.', emptyOpenable: 'There are no games you can open. Unrecoverable games are hidden.', connect: 'Open game', showUnavailable: 'Show unavailable games', hideUnavailable: 'Hide unavailable games', notRecoverable: 'No compatible game checkpoint is available for this sequence.', stateUnavailable: 'This sequence cannot be opened in its current state.', error: 'Could not load the game list.', seqLabel: 'Or enter a sequence ID', secretLabel: 'Access code (if provided)', openSequence: 'Open sequence' },
+  eo: { signedInAs: 'Ensalutinta kiel {name}', title: 'Esplori ludojn', intro: 'Elektu disponeblan sinsekvon por konektiĝi kaj ludi.', loading: 'Ŝargante ludojn…', refresh: 'Ĝisdatigi liston', empty: 'Neniuj ludoj disponeblas nun.', emptyOpenable: 'Ne estas ludoj malfermeblaj. Nereakireblaj ludoj estas kaŝitaj.', connect: 'Malfermi ludon', showUnavailable: 'Montri ne disponeblajn ludojn', hideUnavailable: 'Kaŝi ne disponeblajn ludojn', notRecoverable: 'Ne ekzistas kongrua ludkontrolpunkto por restarigi ĉi tiun sinsekvon.', stateUnavailable: 'La sinsekvo ne povas malfermiĝi en sia nuna stato.', error: 'Ne eblis ŝargi la ludliston.', seqLabel: 'Aŭ enigu sinsekvan identigilon', secretLabel: 'Alirkodo (se donita)', openSequence: 'Malfermi sinsekvon' }
 };
 const language = document.getElementById('language');
 language.value = localStorage.getItem('game-player-language') || 'es';
 language.onchange = () => { localStorage.setItem('game-player-language', language.value); renderText(); loadGames(); };
 const t = key => translations[language.value]?.[key] || translations.es[key];
+function renderAccount() {
+  const token = localStorage.getItem('voting_app_token') || localStorage.getItem('voting_platform_token') || localStorage.getItem('koncenso_token');
+  const storedUser = localStorage.getItem('voting_app_user') || localStorage.getItem('voting_platform_user') || localStorage.getItem('kunsido_user');
+  const account = document.getElementById('account-name');
+  account.hidden = true;
+  if (!token || !storedUser) return;
+  try {
+    const user = JSON.parse(storedUser);
+    const name = user?.alias || user?.name || user?.email || user?.id;
+    if (!name) return;
+    account.textContent = t('signedInAs').replace('{name}', name);
+    account.hidden = false;
+  } catch {}
+}
 const showUnavailableKey = 'game-player-show-unavailable';
 let showUnavailable = localStorage.getItem(showUnavailableKey) === 'true';
 let allGames = [];
 function renderText() {
   document.documentElement.lang = language.value;
   document.title = `${t('title')} · Kunsido`;
+  renderAccount();
   document.getElementById('title').textContent = t('title');
   document.getElementById('intro').textContent = t('intro');
   document.getElementById('refresh').textContent = t('refresh');
@@ -88,10 +103,13 @@ async function loadGames() {
   status.textContent = t('loading');
   document.getElementById('indicator').classList.remove('error');
   try {
-    const response = await fetch('api/games', { cache: 'no-store' });
+    const response = await fetch('cli/execute', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'games list' })
+    });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || t('error'));
-    renderGames(result.games || []);
+    if (!response.ok || !result.success) throw new Error(result.error || t('error'));
+    renderGames(result.data?.games || []);
     status.textContent = '';
   } catch (error) {
     document.getElementById('games').replaceChildren();

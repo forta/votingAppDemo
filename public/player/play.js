@@ -43,6 +43,19 @@
     location.reload();
   };
 
+  const sessionToken = localStorage.getItem('voting_app_token') || localStorage.getItem('voting_platform_token') || localStorage.getItem('koncenso_token');
+  const storedUser = localStorage.getItem('voting_app_user') || localStorage.getItem('voting_platform_user') || localStorage.getItem('kunsido_user');
+  if (sessionToken && storedUser) {
+    try {
+      const user = JSON.parse(storedUser);
+      const displayName = user?.alias || user?.name || user?.email || user?.id;
+      if (displayName) {
+        $('account-name').textContent = t('signedInAs', { name: displayName });
+        $('account-name').hidden = false;
+      }
+    } catch {}
+  }
+
   const setStatus = (message, error = false) => {
     $('status').textContent = message;
     $('status').classList.toggle('error', error);
@@ -465,10 +478,13 @@
           && ['whattheshell', 'ink'].includes(normalizedHandler)) {
         runnerAttempted = true;
         try {
-          const response = await fetch(`api/games/${encodeURIComponent(seqId)}/connect`, { method: 'POST' });
+          const response = await fetch('cli/execute', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: `games connect --seqId=${seqId}` })
+          });
           const result = await response.json();
-          if (!response.ok) throw new Error(result.error || t('requestError'));
-          runnerMessage = t(result.started ? 'runnerStarted' : 'runnerAlreadyRunning');
+          if (!response.ok || !result.success) throw new Error(result.error || t('requestError'));
+          runnerMessage = t(result.data?.started ? 'runnerStarted' : 'runnerAlreadyRunning');
         } catch (error) { runnerMessage = error.message; runnerFailed = true; }
       }
       const kindKey = normalizedHandler === 'whattheshell' ? 'wtsTitle' : normalizedHandler === 'ink' ? 'inkTitle' : 'genericTitle';

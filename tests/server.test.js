@@ -25,8 +25,13 @@ test('standalone server serves the generic explorer and player assets', async ()
     assert.equal(stylesheet.status, 200);
     assert.match(stylesheet.headers.get('content-type'), /text\/css/);
 
-    const listing = await fetch(`${origin}/api/games`);
-    assert.deepEqual(await listing.json(), { games: [] });
+    const listing = await fetch(`${origin}/cli/execute`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'games list' })
+    });
+    assert.deepEqual(await listing.json(), { success: true, data: { games: [] } });
+    const directApi = await fetch(`${origin}/api/games`);
+    assert.equal(directApi.status, 404);
   });
 });
 

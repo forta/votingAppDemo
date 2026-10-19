@@ -46,11 +46,14 @@ What the Shell and Ink.
 The browser flow is split between `public/explore.html` plus `explore.js` and
 `public/player/index.html` plus `player/play.js`. The latter obtains the public
 sequence/slot projection and uses the game functionality to select a renderer.
-Anonymous player requests are restricted to the public `slotseqs` commands in
-`lib/player-router.js`; bot credentials stay on the server. A supplied sequence
-ID opens the player view directly, while bot startup still requires that the
-sequence use a configured integration key. The generic player calls the bot
-API independently through the server-side `GameManager`.
+Browser game-data and control requests use `POST /cli/execute`; static assets
+such as translation JSON files are served normally. The player submits public
+`slotseqs` operations, while the explorer and runner use service-local
+`games list` and `games connect --seqId=...` commands. The router handles those
+commands and the game manager communicates with the voting backend only through
+its `/cli/execute` client. No separate `/api/games` routes are exposed, and bot
+credentials stay on the server. A supplied sequence ID opens the player
+directly; bot startup requires a configured integration key.
 
 `lib/voting-api.js` is the only application API client: it exchanges configured
 API-key credentials through the `auth token` command and submits all subsequent
@@ -172,8 +175,8 @@ with two service instances only after an atomic runner lease is available.
 
 ## Layout and checks
 
-- `server.js` serves the explorer and player, exposes the game connection API,
-  and forwards only the anonymous slot commands allowed by the player.
+- `server.js` serves the explorer and player and exposes the command-only
+  player gateway for game discovery, runner startup and allowed slot actions.
 - `lib/voting-api.js` is the only upstream HTTP client. It sends commands to
   `/cli/execute`, including the API-key token exchange.
 - `lib/game-manager.js` discovers assigned sequences and dispatches to the

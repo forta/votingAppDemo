@@ -18,6 +18,10 @@ test('generic player router works under the main backend path', async t => {
   await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}/games/play`;
 
+  const noSlash = await fetch(origin, { redirect: 'manual' });
+  assert.equal(noSlash.status, 308);
+  assert.equal(noSlash.headers.get('location'), '/games/play/');
+
   const explorer = await fetch(`${origin}/`);
   assert.equal(explorer.status, 200);
   assert.match(await explorer.text(), /Explorar partidas/);
@@ -34,9 +38,20 @@ test('generic player router works under the main backend path', async t => {
   assert.equal(explorerScript.headers.get('cache-control'), 'no-cache');
   assert.match(await explorerScript.text(), /created-at/);
 
-  const games = await fetch(`${origin}/api/games`);
-  assert.deepEqual(await games.json(), { games: [{ seqId: 'seq-1' }] });
+  const games = await fetch(`${origin}/cli/execute`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: 'games list' })
+  });
+  assert.deepEqual(await games.json(), { success: true, data: { games: [{ seqId: 'seq-1' }] } });
 
+  const connect = await fetch(`${origin}/cli/execute`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: 'games connect --seqId=seq-1' })
+  });
+  assert.deepEqual(await connect.json(), { success: true, data: { seqId: 'seq-1' } });
+
+  const directApi = await fetch(`${origin}/api/games`);
+  assert.equal(directApi.status, 404);
   const command = await fetch(`${origin}/cli/execute`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command: 'slotseqs public --seq=seq-1' })
