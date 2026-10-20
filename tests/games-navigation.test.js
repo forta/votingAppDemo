@@ -13,21 +13,25 @@ test('game catalogue routes each supported game type to the shared explorer', ()
   const catalogueHtml = fs.readFileSync(path.join(root, 'subsites/games/index.html'), 'utf8');
   const explorerHtml = fs.readFileSync(path.join(__dirname, '../public/explore.html'), 'utf8');
   const playerHtml = fs.readFileSync(path.join(__dirname, '../public/player/index.html'), 'utf8');
+  const themeScript = fs.readFileSync(path.join(__dirname, '../public/theme.js'), 'utf8');
   const explorerScript = fs.readFileSync(path.join(__dirname, '../public/explore.js'), 'utf8');
 
   assert.doesNotThrow(() => new vm.Script(catalogue));
   assert.doesNotThrow(() => new vm.Script(explorerScript));
+  assert.doesNotThrow(() => new vm.Script(themeScript));
   assert.match(catalogue, /type=.*encodeURIComponent\(game\.id\)/);
   assert.match(catalogue, /id="direct-game-form"/);
   assert.match(catalogue, /id="access-secret"/);
   assert.match(catalogue, /logo-home/);
   assert.match(catalogueHtml, /games\.css/);
   assert.match(explorerHtml, /class="player-home"/);
+  assert.match(explorerHtml, /theme\.js/);
   assert.match(explorerHtml, /id="game-type"/);
   assert.doesNotMatch(explorerHtml, /id="sequence-id"|id="access-secret"/);
   assert.match(explorerHtml, /href="\/games\/" id="games-link"/);
-  assert.match(playerHtml, /id="home-brand"[\s\S]*?src="\/static\/pics\/logo\.png"/);
+  assert.match(playerHtml, /id="home-brand"[\s\S]*?src="logo\.png"/);
   assert.match(playerHtml, /href="\/games\/" id="games-link"/);
+  assert.match(playerHtml, /theme\.js/);
   assert.match(explorerScript, /game\.functionalityId === selectedType/);
   assert.match(explorerScript, /gamesBack:/);
 });

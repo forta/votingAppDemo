@@ -40,6 +40,7 @@
   $('games-link').textContent = t('gamesLink');
   document.querySelectorAll('[data-i18n]').forEach(element => { element.textContent = t(element.dataset.i18n); });
   $('language').value = ['es', 'en', 'eo'].includes(language) ? language : 'es';
+  $('language').setAttribute('aria-label', t('languageLabel'));
   $('language').onchange = () => {
     localStorage.setItem('game-player-language', $('language').value);
     location.reload();

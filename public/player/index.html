@@ -5,12 +5,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Partida · Juegos</title>
-  <link rel="stylesheet" href="player/style.css">
+  <link rel="stylesheet" href="player/style.css?v=20261020-3">
+  <script defer src="theme.js?v=20261020-1"></script>
   <script defer src="player/play.js"></script>
 </head>
 <body>
   <main>
-    <header><a href="/" id="home-brand" aria-label="Kunsido"><img src="/static/pics/logo.png" alt="Kunsido"><span id="brand-name">Kunsido</span></a><a href="/games/" id="games-link" data-i18n="gamesLink"></a><div class="header-actions"><span id="account-name" class="account-name" hidden></span><select id="language" aria-label="Language"><option value="es">Español</option><option value="en">English</option><option value="eo">Esperanto</option></select></div></header>
+    <header><a href="/landing/" id="home-brand" aria-label="Kunsido"><img src="logo.png" alt="Kunsido"><span id="brand-name">Kunsido</span></a><a href="/games/" id="games-link" data-i18n="gamesLink"></a><div class="header-actions"><span id="account-name" class="account-name" hidden></span><select id="language" aria-label="Language"><option value="es">Español</option><option value="en">English</option><option value="eo">Esperanto</option></select></div></header>
     <p class="eyebrow" id="game-kind"></p>
     <h1 data-i18n="title"></h1>
     <p id="game-description" class="intro" data-i18n="intro"></p>
@@ -37,7 +38,7 @@
       <p id="renderer-error" class="error" role="status"></p>
     </section>
     <div id="game-view" class="game-view" data-game-handler="generic" aria-live="polite" hidden></div>
-    <footer><a href="./" data-i18n="gamesLink"></a></footer>
+    <footer><a href="/games/" data-i18n="gamesLink"></a></footer>
   </main>
   <dialog id="slot-dialog">
     <form id="slot-form">

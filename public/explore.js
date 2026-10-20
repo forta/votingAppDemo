@@ -4,7 +4,7 @@
  * specific sequence, optionally preserving its access code for this session. */
 const translations = {
   es: {
-    signedInAs: 'Sesión: {name}', title: 'Explorar partidas', gamesLink: 'Juegos', gamesBack: 'Volver a los juegos',
+    signedInAs: 'Sesión: {name}', title: 'Explorar partidas', gamesLink: 'Juegos', gamesBack: 'Volver a los juegos', languageLabel: 'Idioma',
     intro: 'Elige un tipo de juego o explora todas las partidas disponibles.',
     loading: 'Cargando partidas…', refresh: 'Actualizar lista',
     empty: 'No hay partidas disponibles ahora.',
@@ -17,7 +17,7 @@ const translations = {
     typeLabel: 'Tipo de juego', allTypes: 'Todos los juegos'
   },
   en: {
-    signedInAs: 'Signed in as {name}', title: 'Explore games', gamesLink: 'Games', gamesBack: 'Back to games',
+    signedInAs: 'Signed in as {name}', title: 'Explore games', gamesLink: 'Games', gamesBack: 'Back to games', languageLabel: 'Language',
     intro: 'Choose a game type or browse all available games.',
     loading: 'Loading games…', refresh: 'Refresh list',
     empty: 'No games are available right now.',
@@ -30,7 +30,7 @@ const translations = {
     typeLabel: 'Game type', allTypes: 'All games'
   },
   eo: {
-    signedInAs: 'Ensalutinta kiel {name}', title: 'Esplori ludojn', gamesLink: 'Ludoj', gamesBack: 'Reen al ludoj',
+    signedInAs: 'Ensalutinta kiel {name}', title: 'Esplori ludojn', gamesLink: 'Ludoj', gamesBack: 'Reen al ludoj', languageLabel: 'Lingvo',
     intro: 'Elektu ludspecon aŭ esploru ĉiujn disponeblajn ludojn.',
     loading: 'Ŝargante ludojn…', refresh: 'Ĝisdatigi liston',
     empty: 'Neniuj ludoj disponeblas nun.',
@@ -83,6 +83,8 @@ function renderText() {
   renderAccount();
   document.getElementById('games-link').textContent = t('gamesLink');
   document.getElementById('games-footer-link').textContent = t('gamesBack');
+  document.querySelector('.language span').textContent = t('languageLabel');
+  language.setAttribute('aria-label', t('languageLabel'));
   document.getElementById('title').textContent = t('title');
   document.getElementById('intro').textContent = t('intro');
   document.getElementById('refresh').textContent = t('refresh');
