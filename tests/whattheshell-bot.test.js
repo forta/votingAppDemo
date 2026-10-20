@@ -151,6 +151,28 @@ test('bot resumes a pending turn with its persisted machine move and existing ba
   assert.equal(client.sequence.turnHistory[0].ballotId, 'ballot-in-flight');
 });
 
+test('a terminal WTS checkpoint finishes its sequence without an acknowledgment ballot', async () => {
+  const client = fakeClient();
+  const outcome = { state: 'finished', winner: 'black' };
+  client.sequence.ballotIds = ['ballot-winning-turn', 'old-ack-ballot'];
+  client.sequence.seqState = {
+    application: 'whattheshell', version: 1,
+    game: engine.createGame({ turn: 5, state: 'finished', winner: 'black' }),
+    ending: { ballotId: 'old-ack-ballot', reason: 'finished', outcome },
+    lastOutcome: outcome, completed: false
+  };
+
+  const result = await run(
+    { sequenceId: 'seq-test', apiKeyId: 'pk-test', secret: 'private', pollIntervalMs: 1, maxTurns: 1, lang: 'en' },
+    { client, wait: async () => {}, output: () => {} }
+  );
+
+  assert.equal(result.status, 'finished');
+  assert.equal(client.sequence.state, 'finished');
+  assert.equal(client.sequence.seqState.completed, true);
+  assert.equal(client.commands.some(command => command.startsWith('ballots create ')), false);
+  assert.equal(client.commands.some(command => command.startsWith('ballots select ')), false);
+});
 test('a zero-vote ballot pauses without applying either move and retries from the same board', async () => {
   const events = [];
   const client = fakeClient(events);

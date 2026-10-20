@@ -36,6 +36,8 @@
 
   document.documentElement.lang = language;
   document.title = t('title');
+  $('brand-name').textContent = 'Kunsido';
+  $('games-link').textContent = t('gamesLink');
   document.querySelectorAll('[data-i18n]').forEach(element => { element.textContent = t(element.dataset.i18n); });
   $('language').value = ['es', 'en', 'eo'].includes(language) ? language : 'es';
   $('language').onchange = () => {
@@ -170,7 +172,13 @@
     if (!selectedSlot || selectedSlot.votedBallotId !== ballot?.ballotId) return null;
     if (selectedSlot.abstainedBallotId === ballot.ballotId) return t('currentAbstention');
     const selected = ballot.options?.find((option, index) => (option.choiceId ?? index) === selectedSlot.proposalChoiceId);
-    return selected ? t('currentVote', { choice: selected.text || t('choice', { number: ballot.options.indexOf(selected) + 1 }) }) : null;
+    if (!selected) return null;
+    let choice = selected.text || t('choice', { number: ballot.options.indexOf(selected) + 1 });
+    if (Array.isArray(snapshot?.board) && snapshot.board.length === 81) {
+      const cell = Number.isInteger(selectedSlot.proposalCell) ? selectedSlot.proposalCell : Number(selected.text);
+      if (Number.isInteger(cell) && cell >= 0 && cell < 81) choice = cellLabel(cell);
+    }
+    return t('currentVote', { choice });
   }
 
   function appendCurrentVote(container, ballot) {

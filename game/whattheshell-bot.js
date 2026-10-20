@@ -131,32 +131,10 @@ async function run(options, dependencies = {}) {
   };
   const finish = async (outcome, reason) => {
     if (checkpoint?.completed) return { status: 'finished', reason, turns: game.turn, outcome };
-    const message = reason === 'inactivity' ? translate('gameInactive') : outcome.winner
-      ? translate('gameWon', { color: translate(outcome.winner) }) : translate('gameDraw');
-    output(message);
-    let ending = checkpoint?.ending;
-    if (!ending) {
-      ending = { ballotId: null, reason, outcome, message };
-      await saveCheckpoint({ ...checkpoint, ending });
-    }
-    if (!ending.ballotId) {
-      const newestBallotId = sequence.ballotIds?.at(-1);
-      let ballotId = newestBallotId && newestBallotId !== checkpoint.lastProcessedBallotId ? newestBallotId : null;
-      if (!ballotId) {
-        // The final acknowledgment is a regular ballot; only the host closes it.
-        const created = await command(`ballots create --title=${quote(translate('gameEndTitle'))} --space=${sequence.spaceId} --seq=${sequence.seqId} --state=ready --options=${quote([{ type: 'text', text: translate('accept') }])} --descriptionJson=${quote(message)}`, token);
-        ballotId = created.ballotId;
-      }
-      ending = { ...ending, ballotId };
-      await saveCheckpoint({ ...checkpoint, ending });
-    }
-    if (!history.some(entry => entry.ballotId === ending.ballotId)) {
-      history.push({ turn: game.turn, ballotId: ending.ballotId, ending: true, reason, board: [...game.board], eggNumbers: { ...game.eggNumbers }, outcome });
-    }
-    await persist('playing');
-    const closed = await waitForClosure(ending.ballotId);
-    if (!closed) return { status: sequence.state, turns: game.turn, outcome };
-    // Assigned bots use seqs state; seqs finish is creator-only.
+    output(reason === 'inactivity' ? translate('gameInactive') : outcome.winner
+      ? translate('gameWon', { color: translate(outcome.winner) }) : translate('gameDraw'));
+    // A completed game is terminal immediately; it does not require an extra
+    // acknowledgment ballot that could leave the sequence active indefinitely.
     await persist('finished');
     await saveCheckpoint({ ...checkpoint, ending: null, completed: true });
     return { status: 'finished', reason, turns: game.turn, outcome };

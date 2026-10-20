@@ -6,27 +6,28 @@
   <base href="./">
   <title>Juegos · Kunsido</title>
   <link rel="stylesheet" href="player/style.css">
-  <script defer src="explore.js?v=20261019-1"></script>
+  <script defer src="explore.js?v=20261020-1"></script>
 </head>
 <body>
   <main class="explorer">
-    <header><a href="./" id="brand">Kunsido · Juegos</a><div class="header-actions"><span id="account-name" class="account-name" hidden></span><label class="language"><span>Idioma</span>
+    <header><a href="/" class="player-home" aria-label="Kunsido"><img src="/static/pics/logo.png" alt="Kunsido"></a><a href="/games/" id="games-link">Juegos</a><div class="header-actions"><span id="account-name" class="account-name" hidden></span><label class="language"><span>Idioma</span>
       <select id="language" aria-label="Idioma"><option value="es">Español</option><option value="en">English</option><option value="eo">Esperanto</option></select></label></div></header>
     <p class="eyebrow">PLAYER MULTIJUEGO</p>
     <h1 id="title">Explorar partidas</h1>
-    <p id="intro" class="intro">Elige una secuencia disponible para conectarte y jugar.</p>
-    <form id="direct-game-form" class="connection direct-game-form">
-      <label for="sequence-id" id="sequence-id-label">O indica el ID de una secuencia</label>
-      <input id="sequence-id" name="seqId" autocomplete="off" required>
-      <label for="access-secret" id="access-secret-label">Código de acceso (si te lo han dado)</label>
-      <input id="access-secret" name="accessSecret" maxlength="5" pattern="[A-Za-z]{5}" autocomplete="one-time-code">
-      <button id="open-sequence" type="submit">Abrir secuencia</button>
-    </form>
+    <p id="intro" class="intro">Elige un tipo de juego o explora todas las partidas disponibles.</p>
+    <section class="connection">
+      <label for="game-type" id="game-type-label">Tipo de juego</label>
+      <select id="game-type">
+        <option value="">Todos los juegos</option>
+        <option value="whattheshell">What the Shell</option>
+        <option value="ink">Ink</option>
+      </select>
+    </section>
     <section class="connection"><span id="indicator"></span><strong id="status" role="status" aria-live="polite">Cargando partidas…</strong>
       <button id="refresh" type="button">Actualizar lista</button></section>
     <p><button id="toggle-unavailable" type="button" hidden></button></p>
     <section id="games" class="game-list" aria-live="polite"></section>
-    <footer><a href="https://app.kunsido.com/app/">Abrir Kunsido</a></footer>
+    <footer><a href="/games/" id="games-footer-link">Volver a los juegos</a></footer>
   </main>
 </body>
 </html>
