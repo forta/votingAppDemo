@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <base href="./">
   <title>Juegos · Kunsido</title>
-  <link rel="stylesheet" href="player/style.css?v=20261020-3">
+  <link rel="stylesheet" href="player/style.css?v=20261021-2">
   <script defer src="theme.js?v=20261020-1"></script>
-  <script defer src="explore.js?v=20261020-1"></script>
+      <script defer src="explore.js?v=20261021-3"></script>
 </head>
 <body>
   <main class="explorer">
@@ -16,6 +16,19 @@
     <p class="eyebrow">PLAYER MULTIJUEGO</p>
     <h1 id="title">Explorar partidas</h1>
     <p id="intro" class="intro">Elige un tipo de juego o explora todas las partidas disponibles.</p>
+    <section class="explore-controls" aria-label="Game search and page size">
+      <label for="game-search" id="search-label">Filter by game name</label>
+      <input id="game-search" type="search" maxlength="100" autocomplete="off" placeholder="Type a sequence name">
+      <span id="game-state-label" class="filter-label">Status</span>
+      <fieldset id="game-state-filter" class="state-filter" aria-labelledby="game-state-label">
+        <label><input type="checkbox" value="waiting" checked> <span data-state-label="waiting">Waiting</span></label>
+        <label><input type="checkbox" value="playing" checked> <span data-state-label="playing">In progress</span></label>
+        <label><input type="checkbox" value="paused" checked> <span data-state-label="paused">Paused</span></label>
+        <label><input type="checkbox" value="finished"> <span data-state-label="finished">Finished</span></label>
+      </fieldset>
+      <label for="page-size" id="page-size-label">Games per page</label>
+      <select id="page-size"><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select>
+    </section>
     <section class="connection">
       <label for="game-type" id="game-type-label">Tipo de juego</label>
       <select id="game-type">
@@ -28,6 +41,11 @@
       <button id="refresh" type="button">Actualizar lista</button></section>
     <p><button id="toggle-unavailable" type="button" hidden></button></p>
     <section id="games" class="game-list" aria-live="polite"></section>
+    <nav id="pagination" class="pagination" aria-label="Game pages" hidden>
+      <button id="previous-page" type="button">Previous</button>
+      <span id="page-status" aria-live="polite"></span>
+      <button id="next-page" type="button">Next</button>
+    </nav>
     <footer><a href="/games/" id="games-footer-link">Volver a los juegos</a></footer>
   </main>
 </body>

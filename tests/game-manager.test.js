@@ -42,8 +42,80 @@ test('lists only sequences assigned to a configured functionality integration', 
   const { manager, commands } = setup();
   const games = await manager.listGames();
   assert.deepEqual(games, [{ seqId: 'seq-game-1', functionalityId: 'whattheshell', name: 'Demo', state: 'waiting', createdAt: null, canConnect: true, connected: false }]);
-  assert.equal(commands[0].command, 'seqs list --functionalityId=whattheshell');
+  assert.equal(commands[0].command, 'seqs list --functionalityId=whattheshell --botKeySource=integration --limit=11 --offset=0 --compact=true');
   assert.equal(JSON.stringify(games).includes('pk-game'), false);
+});
+
+test('searches and pages game sequences through the voting API', async () => {
+  const { manager } = setup();
+  const commands = [];
+  manager.command = async command => {
+    commands.push(command);
+    return [{
+      seqId: 'seq-search', name: 'Demo evening', state: 'waiting', ballotIds: [],
+      functionalityId: 'whattheshell', botUserId: 'pk-game', botMode: 'sequence_bot',
+      botKeySource: 'integration', createdAt: '2026-03-01T10:00:00.000Z'
+    }];
+  };
+
+  const result = await manager.listGamesPage({ offset: 20, limit: 25, functionalityId: 'whattheshell', search: 'evening test', state: 'paused' });
+  assert.equal(result.offset, 20);
+  assert.equal(result.limit, 25);
+  assert.equal(result.hasMore, false);
+  assert.deepEqual(result.games.map(game => game.seqId), ['seq-search']);
+  assert.match(commands[0], /--botKeySource=integration --state=paused --limit=26 --offset=20 --compact=true/);
+  assert.match(commands[0], /--search64=ZXZlbmluZyB0ZXN0/);
+});
+
+test('combines selected states before sorting and paginating', async () => {
+  const { manager } = setup();
+  const makeSequence = (seqId, state, createdAt) => ({
+    seqId, name: seqId, state, ballotIds: [], functionalityId: 'whattheshell',
+    botUserId: 'pk-game', botMode: 'sequence_bot', botKeySource: 'integration', createdAt
+  });
+  const commands = [];
+  manager.command = async command => {
+    commands.push(command);
+    if (command.includes('--state=waiting')) return [
+      makeSequence('wait-old', 'waiting', '2026-01-01T00:00:00.000Z'),
+      makeSequence('wait-new', 'waiting', '2026-03-01T00:00:00.000Z')
+    ];
+    if (command.includes('--state=playing')) return [makeSequence('playing-mid', 'playing', '2026-02-01T00:00:00.000Z')];
+    throw new Error(`Unexpected state query: ${command}`);
+  };
+
+  const result = await manager.listGamesPage({ offset: 1, limit: 1, functionalityId: 'whattheshell', states: ['waiting', 'playing'] });
+  assert.deepEqual(result.games.map(game => game.seqId), ['playing-mid']);
+  assert.equal(result.hasMore, true);
+  assert.equal(commands.length, 2);
+  assert.ok(commands.every(command => /--limit=3 --offset=0/.test(command)));
+});
+
+test('returns no games without querying when no states are selected', async () => {
+  const { manager, commands } = setup();
+  assert.deepEqual(await manager.listGamesPage({ states: [] }), { games: [], offset: 0, limit: 10, hasMore: false });
+  assert.deepEqual(commands, []);
+});
+
+test('returns a globally sorted page when browsing more than one game type', async () => {
+  const { manager } = setup({ config: { games: [
+    { functionalityId: 'whattheshell', apiKeyId: 'pk-wts', secret: 'secret', adapter: 'whattheshell' },
+    { functionalityId: 'ink', apiKeyId: 'pk-ink', secret: 'secret', adapter: 'ink' }
+  ] } });
+  manager.token = async game => game.apiKeyId;
+  manager.command = async (command, token) => {
+    const functionalityId = token === 'pk-wts' ? 'whattheshell' : 'ink';
+    const seqId = functionalityId === 'whattheshell' ? 'seq-wts' : 'seq-ink';
+    return [{
+      seqId, name: seqId, state: 'waiting', ballotIds: [], functionalityId,
+      botUserId: token, botMode: 'sequence_bot', botKeySource: 'integration',
+      createdAt: functionalityId === 'whattheshell' ? '2026-02-01T00:00:00.000Z' : '2026-03-01T00:00:00.000Z'
+    }];
+  };
+
+  const result = await manager.listGamesPage({ offset: 1, limit: 1 });
+  assert.deepEqual(result.games.map(game => game.seqId), ['seq-wts']);
+  assert.equal(result.hasMore, false);
 });
 
 test('lists games from newest to oldest by sequence creation time', async () => {

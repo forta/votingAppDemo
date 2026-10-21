@@ -16,7 +16,7 @@ test('Ink adapter downloads and compiles the sequence story through CLI commands
     async loginApiKey() { return { access_token: 'token', identity: { id: 'pk-ink', type: 'apikey' } }; },
     async _execRemote(command, token) {
       calls.push({ command, token });
-      if (command.startsWith('seqs list')) return { success: true, data: [sequence] };
+      if (command.startsWith('seqs get')) return { success: true, data: sequence };
       if (command.startsWith('seqs seq-state-get')) return { success: true, data: {
         success: true, data: { seqId: sequence.seqId, seqState: null }
       } };

@@ -11,7 +11,7 @@ async function withServer(server, run) {
 }
 
 test('standalone server serves the generic explorer and player assets', async () => {
-  const server = createServer({}, { gameManager: { async listGames() { return []; }, async connect() { return {}; } } });
+  const server = createServer({}, { gameManager: { async listGamesPage() { return { games: [], offset: 0, limit: 10, hasMore: false }; }, async connect() { return {}; } } });
   await withServer(server, async origin => {
     const explorer = await fetch(`${origin}/`);
     assert.equal(explorer.status, 200);
@@ -29,7 +29,7 @@ test('standalone server serves the generic explorer and player assets', async ()
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command: 'games list' })
     });
-    assert.deepEqual(await listing.json(), { success: true, data: { games: [] } });
+    assert.deepEqual(await listing.json(), { success: true, data: { games: [], offset: 0, limit: 10, hasMore: false } });
     const directApi = await fetch(`${origin}/api/games`);
     assert.equal(directApi.status, 404);
   });

@@ -27,6 +27,9 @@ test('game catalogue routes each supported game type to the shared explorer', ()
   assert.match(explorerHtml, /class="player-home"/);
   assert.match(explorerHtml, /theme\.js/);
   assert.match(explorerHtml, /id="game-type"/);
+  assert.match(explorerHtml, /id="game-search"/);
+  assert.match(explorerHtml, /id="page-size"/);
+  assert.match(explorerHtml, /id="pagination"/);
   assert.doesNotMatch(explorerHtml, /id="sequence-id"|id="access-secret"/);
   assert.match(explorerHtml, /href="\/games\/" id="games-link"/);
   assert.match(playerHtml, /id="home-brand"[\s\S]*?src="logo\.png"/);
@@ -34,6 +37,8 @@ test('game catalogue routes each supported game type to the shared explorer', ()
   assert.match(playerHtml, /theme\.js/);
   assert.match(explorerScript, /game\.functionalityId === selectedType/);
   assert.match(explorerScript, /gamesBack:/);
+  assert.match(explorerScript, /search: searchValue\.trim\(\)/);
+  assert.match(explorerScript, /offset: currentOffset/);
 });
 
 test('game catalogue translations are valid and have the same keys', () => {

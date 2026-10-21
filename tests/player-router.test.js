@@ -7,11 +7,12 @@ const { createPlayerRouter } = require('../lib/player-router');
 
 test('generic player router works under the main backend path', async t => {
   const app = express();
+  const listOptions = [];
   app.use(express.json({ limit: '8kb' }));
   app.use('/games/play', createPlayerRouter(express, {
     async _execRemote(command, token) { return { success: true, command, token }; }
   }, {
-    gameManager: { async listGames() { return [{ seqId: 'seq-1' }]; }, async connect(seqId) { return { seqId }; } }
+    gameManager: { async listGamesPage(options) { listOptions.push(options); return { games: [{ seqId: 'seq-1' }], offset: options.offset, limit: options.limit, hasMore: true }; }, async connect(seqId) { return { seqId }; } }
   }));
   const server = app.listen(0, '127.0.0.1');
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -42,7 +43,14 @@ test('generic player router works under the main backend path', async t => {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command: 'games list' })
   });
-  assert.deepEqual(await games.json(), { success: true, data: { games: [{ seqId: 'seq-1' }] } });
+  assert.deepEqual(await games.json(), { success: true, data: { games: [{ seqId: 'seq-1' }], offset: 0, limit: 10, hasMore: true } });
+
+  const searchedGames = await fetch(`${origin}/cli/execute`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: 'games list', options: { offset: 20, limit: 25, functionalityId: 'ink', search: 'house', states: ['waiting', 'playing'] } })
+  });
+  assert.equal(searchedGames.status, 200);
+  assert.deepEqual(listOptions.at(-1), { offset: 20, limit: 25, functionalityId: 'ink', search: 'house', state: '', states: ['waiting', 'playing'] });
 
   const connect = await fetch(`${origin}/cli/execute`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

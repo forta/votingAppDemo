@@ -13,6 +13,11 @@ memory; credentials and tokens are never sent to the browser. Ink story files
 are downloaded for the assigned sequence through `seqs file-download` and
 compiled in memory.
 
+The explorer searches sequence names on the backend and loads one page at a
+time. It defaults to 10 results and offers 25, 50, or 100 per page. Its `type`,
+`search`, `page`, and `pageSize` query parameters preserve the current view in
+the URL.
+
 ## Code layout
 
 ```text

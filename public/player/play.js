@@ -7,7 +7,7 @@
   const $ = id => document.getElementById(id);
   const language = localStorage.getItem('game-player-language') ||
     (navigator.language || 'es').slice(0, 2).toLowerCase();
-  const text = await fetch(`player/play_${language}.json`)
+  const text = await fetch(`player/play_${language}.json?v=20261021-2`)
     .then(response => response.ok ? response.json() : Promise.reject(new Error('Translation not found')))
     .catch(() => fetch('player/play_en.json').then(response => response.json()));
   const t = (key, values = {}) => Object.entries(values)
@@ -64,6 +64,38 @@
     $('status').classList.toggle('error', error);
   };
   const quote = value => JSON.stringify(String(value));
+  async function writeClipboard(value) {
+    if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+    const input = document.createElement('textarea');
+    input.value = value;
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.append(input);
+    input.select();
+    const copied = document.execCommand('copy');
+    input.remove();
+    if (!copied) throw new Error('Clipboard copy failed');
+  }
+  function createCopyButton(value) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy-sequence-id';
+    button.title = t('copyId');
+    button.setAttribute('aria-label', t('copyId'));
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path></svg>';
+    button.onclick = async () => {
+      try {
+        await writeClipboard(value);
+        button.title = t('idCopied');
+        button.setAttribute('aria-label', t('idCopied'));
+      } catch {
+        button.title = t('copyFailed');
+        button.setAttribute('aria-label', t('copyFailed'));
+      }
+      setTimeout(() => { button.title = t('copyId'); button.setAttribute('aria-label', t('copyId')); }, 1600);
+    };
+    return button;
+  }
   const saveSelection = () => selectedSlot
     ? localStorage.setItem(selectionKey, JSON.stringify(selectedSlot))
     : localStorage.removeItem(selectionKey);
@@ -501,8 +533,18 @@
       $('game-description').textContent = t('intro');
       $('renderer-panel').hidden = Boolean(snapshot.functionalityId);
       if (!snapshot.functionalityId) $('renderer').value = selectedRenderer;
-      const state = snapshot.sequenceState || 'waiting';
-      $('sequence').textContent = `${seqId} · ${t(`state_${state}`)}`;
+      const reportedState = snapshot.sequenceState || 'waiting';
+      const state = ['waiting', 'playing', 'paused', 'finished'].includes(reportedState) ? reportedState : 'unknown';
+      const sequenceInfo = $('sequence');
+      sequenceInfo.replaceChildren();
+      sequenceInfo.classList.add('sequence-meta');
+      const sequenceTitle = document.createElement('span');
+      sequenceTitle.className = 'sequence-title';
+      sequenceTitle.textContent = snapshot.sequenceName || t('untitledGame');
+      const sequenceState = document.createElement('span');
+      sequenceState.className = 'game-state state-' + state;
+      sequenceState.textContent = t('state_' + state);
+      sequenceInfo.append(sequenceTitle, sequenceState, createCopyButton(seqId));
       $('start').hidden = !(['waiting', 'paused'].includes(state) && selectedSlot && !snapshot.ballot);
       $('start').textContent = t(state === 'paused' ? 'resumeGame' : 'startGame');
       setStatus(runnerMessage || t(state === 'waiting' ? 'waitingToStart' : state === 'paused' ? 'paused' : state === 'finished' ? 'gameFinished' : 'connected'), runnerFailed);
