@@ -7,7 +7,7 @@
   const $ = id => document.getElementById(id);
   const language = localStorage.getItem('game-player-language') ||
     (navigator.language || 'es').slice(0, 2).toLowerCase();
-  const text = await fetch(`player/play_${language}.json?v=20261022-1`)
+  const text = await fetch(`player/play_${language}.json?v=20261022-2`)
     .then(response => response.ok ? response.json() : Promise.reject(new Error('Translation not found')))
     .catch(() => fetch('player/play_en.json').then(response => response.json()));
   const t = (key, values = {}) => Object.entries(values)
@@ -21,6 +21,7 @@
   let busy = false;
   let restoredSelection = false;
   let refreshTimer = null;
+  let backgroundRefreshFailures = 0;
   let countdownTimer = null;
   let syncStarted = false;
   let sequenceEventsConnected = false;
@@ -109,6 +110,21 @@
     catch { selectedSlot = null; }
   };
 
+  async function readCommandResponse(response) {
+    const incomplete = () => Object.assign(
+      new Error(t('incompleteResponse', { status: response.status })),
+      { code: 'INCOMPLETE_RESPONSE' }
+    );
+    let body;
+    try { body = await response.text(); }
+    catch { throw incomplete(); }
+    if (!body) throw incomplete();
+    let result;
+    try { result = JSON.parse(body); }
+    catch { throw incomplete(); }
+    if (!result || typeof result !== 'object') throw incomplete();
+    return result;
+  }
   async function command(operation, fields = {}) {
     const commandFields = { ...fields };
     if (accessSecret && publicSlotOperations.has(operation)) commandFields.accessSecret = accessSecret;
@@ -118,7 +134,7 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command: `slotseqs ${operation} ${args}` })
     });
-    const result = await response.json();
+    const result = await readCommandResponse(response);
     if (!response.ok || !result.success) {
       const error = new Error(result.error || t('requestError'));
       error.code = result.code || null;
@@ -139,14 +155,15 @@
     $('access-code').focus();
   }
 
-  function scheduleFallbackRefresh() {
+  function scheduleFallbackRefresh(delayMs = null) {
     if (!syncStarted) return;
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(async () => {
       refreshTimer = null;
-      await refresh();
-      scheduleFallbackRefresh();
-    }, sequenceEventsConnected ? 30000 : 5000);
+      const refreshed = await refresh(null, true);
+      const retryDelay = refreshed ? null : Math.min(30000, 5000 * (2 ** Math.min(backgroundRefreshFailures, 2)));
+      scheduleFallbackRefresh(retryDelay);
+    }, delayMs ?? (sequenceEventsConnected ? 30000 : 5000));
   }
 
   function setSequenceEventConnection(connected) {
@@ -580,7 +597,7 @@
     $('release').hidden = !selectedSlot;
   }
 
-  async function refresh(incomingSnapshot = null) {
+  async function refresh(incomingSnapshot = null, background = false) {
     if (!seqId || !/^[A-Za-z0-9_-]{1,128}$/.test(seqId)) return;
     if (busy) {
       if (incomingSnapshot) pendingSnapshot = incomingSnapshot;
@@ -589,6 +606,7 @@
     busy = true;
     try {
       snapshot = incomingSnapshot || await command('public', { seq: seqId });
+      backgroundRefreshFailures = 0;
       void connectSequenceStateEvents();
       const serverTime = Date.parse(snapshot.serverTime);
       if (Number.isFinite(serverTime)) serverClockMs = serverTime;
@@ -605,7 +623,10 @@
               seq: seqId, slot: selectedSlot.slotNumber, pin: selectedSlot.pin
             }) };
             saveSelection();
-          } catch { selectedSlot = null; saveSelection(); }
+          } catch (error) {
+            if (error.code === 'INCOMPLETE_RESPONSE') restoredSelection = false;
+            else { selectedSlot = null; saveSelection(); }
+          }
         }
       }
       const handler = snapshot.functionalityId || selectedRenderer || 'generic';
@@ -618,7 +639,7 @@
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ command: `games connect --seqId=${seqId}` })
           });
-          const result = await response.json();
+          const result = await readCommandResponse(response);
           if (!response.ok || !result.success) throw new Error(result.error || t('requestError'));
           runnerMessage = t(result.data?.started ? 'runnerStarted' : 'runnerAlreadyRunning');
         } catch (error) { runnerMessage = error.message; runnerFailed = true; }
@@ -648,7 +669,10 @@
       if ($('access-dialog').open) $('access-dialog').close();
       return true;
     } catch (error) {
-      if (error.code === 'GAME_ACCESS_CODE_REQUIRED') setStatus(t('accessCodePrompt'), true);
+      if (background && snapshot) {
+        backgroundRefreshFailures += 1;
+        if (backgroundRefreshFailures >= 3) setStatus(error.message, true);
+      } else if (error.code === 'GAME_ACCESS_CODE_REQUIRED') setStatus(t('accessCodePrompt'), true);
       else setStatus(error.message, true);
       return false;
     }
@@ -714,7 +738,11 @@
         proposalChoiceId: abstain ? null : result.choiceId, abstainedBallotId: abstain ? ballot.ballotId : null };
       saveSelection();
       $('notice').textContent = t('voteAccepted');
-    } catch (error) { const notice = $('notice'); if (notice) notice.textContent = error.message; }
+    } catch (error) {
+      if (error.code === 'INCOMPLETE_RESPONSE') restoredSelection = false;
+      const notice = $('notice');
+      if (notice) notice.textContent = error.message;
+    }
     finally { busy = false; await refresh(); }
   }
 
@@ -742,7 +770,7 @@
     } catch (error) { setStatus(error.message, true); }
     finally { busy = false; await refresh(); }
   };
-  $('refresh').onclick = refresh;
+  $('refresh').onclick = () => { void refresh(); };
   $('renderer').onchange = () => {
     const previous = selectedRenderer;
     const next = $('renderer').value;
@@ -776,7 +804,7 @@
     if (await refresh()) startSync();
   };
   $('access-code-cancel').onclick = () => $('access-dialog').close();
-  window.addEventListener('online', refresh);
+  window.addEventListener('online', () => { void refresh(); });
   window.addEventListener('offline', () => setStatus(t('connectionError'), true));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   window.addEventListener('beforeunload', () => {

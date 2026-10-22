@@ -117,6 +117,11 @@ The backend loads the player credentials from that file only when
 player process or `GAME_PLAYER_SERVICE_URL` is involved. Set the flag to `false`
 or remove it to disable the integrated player.
 
+In integrated mode, the player sends its CLI commands to the main backend over
+`127.0.0.1` on that same port. `WTS_CLI_SERVER_URL` applies only when running
+VotingAppDemo as a separate process. The process-local forwarding header avoids
+counting these internal calls twice against the public IP rate limit.
+
 For standalone mode, copy `.env_isolated` to `VotingAppDemo/.env` and run
 `npm start` from this directory. That process listens on port 3100 by default.
 

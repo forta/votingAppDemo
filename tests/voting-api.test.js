@@ -22,3 +22,18 @@ test('bot authentication and commands use only the CLI execution endpoint', asyn
     assert.equal(calls[1].body.command, 'seqs list --functionalityId=ink');
   } finally { global.fetch = originalFetch; }
 });
+
+test('integrated gateway headers stay on the CLI request', async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), headers: options.headers });
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const client = createVotingApiClient('http://127.0.0.1:3000', { headers: { 'x-voting-command-forward': 'local-marker' } });
+    await client._execRemote('slotseqs public --seq=seq-1', null);
+    assert.equal(new URL(calls[0].url).pathname, '/cli/execute');
+    assert.equal(calls[0].headers['x-voting-command-forward'], 'local-marker');
+  } finally { global.fetch = originalFetch; }
+});
