@@ -7,7 +7,7 @@
   <title>Partida · Juegos</title>
   <link rel="stylesheet" href="player/style.css?v=20261021-1">
   <script defer src="theme.js?v=20261020-1"></script>
-  <script defer src="player/play.js?v=20261021-2"></script>
+  <script defer src="player/play.js?v=20261021-3"></script>
 </head>
 <body>
   <main>
@@ -20,6 +20,12 @@
       <p id="sequence" class="meta"></p>
       <button id="refresh" data-i18n="refresh"></button>
       <button id="start" data-i18n="startGame" hidden></button>
+    </section>
+    <section id="sequence-event-status" class="status-card" aria-live="polite">
+      <h2 data-i18n="sequenceEventsTitle"></h2>
+      <p class="meta" data-i18n="sequenceEventsHint"></p>
+      <p><strong id="sequence-event-count">0</strong> <span data-i18n="sequenceEventsCount"></span></p>
+      <p id="sequence-event-connection" class="meta" data-i18n="sequenceEventsConnecting"></p>
     </section>
     <section id="slots-panel">
       <h2 data-i18n="slotsTitle"></h2>

@@ -7,7 +7,7 @@
   const $ = id => document.getElementById(id);
   const language = localStorage.getItem('game-player-language') ||
     (navigator.language || 'es').slice(0, 2).toLowerCase();
-  const text = await fetch(`player/play_${language}.json?v=20261021-2`)
+  const text = await fetch(`player/play_${language}.json?v=20261022-1`)
     .then(response => response.ok ? response.json() : Promise.reject(new Error('Translation not found')))
     .catch(() => fetch('player/play_en.json').then(response => response.json()));
   const t = (key, values = {}) => Object.entries(values)
@@ -22,9 +22,14 @@
   let restoredSelection = false;
   let refreshTimer = null;
   let countdownTimer = null;
+  let syncStarted = false;
+  let sequenceEventsConnected = false;
   let serverClockMs = Date.now();
   let serverClockTick = performance.now();
   let lastCountdownText = null;
+  let sequenceEventsStarted = false;
+  let sequenceEventController = null;
+  let pendingSnapshot = null;
   let runnerAttempted = false;
   let runnerMessage = null;
   let runnerFailed = false;
@@ -134,10 +139,85 @@
     $('access-code').focus();
   }
 
+  function scheduleFallbackRefresh() {
+    if (!syncStarted) return;
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(async () => {
+      refreshTimer = null;
+      await refresh();
+      scheduleFallbackRefresh();
+    }, sequenceEventsConnected ? 30000 : 5000);
+  }
+
+  function setSequenceEventConnection(connected) {
+    sequenceEventsConnected = connected;
+    const status = $("sequence-event-connection");
+    if (status) status.textContent = t(connected ? "sequenceEventsConnected" : "sequenceEventsDisconnected");
+    scheduleFallbackRefresh();
+  }
+
   function startSync() {
-    if (refreshTimer) return;
-    refreshTimer = setInterval(refresh, 2500);
+    if (syncStarted) return;
+    syncStarted = true;
+    scheduleFallbackRefresh();
     countdownTimer = setInterval(renderCountdown, 250);
+  }
+
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function connectSequenceStateEvents() {
+    if (sequenceEventsStarted) return;
+    sequenceEventsStarted = true;
+    sequenceEventController = new AbortController();
+    while (!sequenceEventController.signal.aborted) {
+      try {
+        const response = await fetch('events/sequence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seqId, accessSecret }),
+          signal: sequenceEventController.signal
+        });
+        if (!response.ok || !response.body) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.error || t('requestError'));
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (!sequenceEventController.signal.aborted) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split('\n\n');
+          buffer = blocks.pop() || '';
+          for (const block of blocks) {
+            const event = block.match(/^event:\s*(.+)$/m)?.[1];
+            const payload = block.match(/^data:\s*(.+)$/m)?.[1];
+            if (!payload) continue;
+            let data;
+            try { data = JSON.parse(payload); } catch { continue; }
+            if (event === "ready") setSequenceEventConnection(true);
+            if (event === 'state-updated') {
+              const previous = Number($('sequence-event-count').textContent) || 0;
+              $('sequence-event-count').textContent = String(previous + (Number(data.eventCount) || 0));
+              if (data.snapshot) void refresh(data.snapshot);
+            }
+            if (event === 'stream-error' || event === 'stream-closed') {
+              setSequenceEventConnection(false);
+            }
+          }
+        }
+      } catch (error) {
+        if (sequenceEventController.signal.aborted) break;
+        sequenceEventsConnected = false;
+        $("sequence-event-connection").textContent = error.message;
+        scheduleFallbackRefresh();
+      }
+      if (!sequenceEventController.signal.aborted) {
+        setSequenceEventConnection(false);
+        await wait(3000);
+      }
+    }
   }
 
   function appendTextParagraphs(container, value) {
@@ -275,6 +355,12 @@
     container.append(actions);
   }
 
+
+  function appendSequenceEventStatus(container) {
+    const status = $("sequence-event-status");
+    if (status) container.append(status);
+  }
+
   function renderStoryHandler(container, ballot, active) {
     const narrative = document.createElement('div');
     narrative.className = 'story-text';
@@ -291,6 +377,7 @@
     container.append(notice);
     appendCurrentVote(container, ballot);
     appendChoiceButtons(container, ballot, isOpen);
+    appendSequenceEventStatus(container);
     appendAbstainButton(container, ballot, isOpen);
   }
 
@@ -379,6 +466,7 @@
         : !snapshot.ballot && !snapshot.lastCompletedBallot ? t('waitingRunner') : t('waitingNext');
     container.append(notice);
     appendCurrentVote(container, ballot);
+    appendSequenceEventStatus(container);
     appendAbstainButton(container, ballot, canVote(ballot));
   }
 
@@ -428,6 +516,8 @@
     const ballot = snapshot?.ballot || snapshot?.lastCompletedBallot
       || (hasWtsBoard ? { options: [], voteCounts: [] } : null);
     if (!snapshot || !ballot) {
+      const eventStatus = $("sequence-event-status");
+      if (eventStatus?.parentElement === container) container.after(eventStatus);
       container.replaceChildren();
       container.hidden = true;
       lastCountdownText = null;
@@ -490,11 +580,16 @@
     $('release').hidden = !selectedSlot;
   }
 
-  async function refresh() {
-    if (busy || !seqId || !/^[A-Za-z0-9_-]{1,128}$/.test(seqId)) return;
+  async function refresh(incomingSnapshot = null) {
+    if (!seqId || !/^[A-Za-z0-9_-]{1,128}$/.test(seqId)) return;
+    if (busy) {
+      if (incomingSnapshot) pendingSnapshot = incomingSnapshot;
+      return false;
+    }
     busy = true;
     try {
-      snapshot = await command('public', { seq: seqId });
+      snapshot = incomingSnapshot || await command('public', { seq: seqId });
+      void connectSequenceStateEvents();
       const serverTime = Date.parse(snapshot.serverTime);
       if (Number.isFinite(serverTime)) serverClockMs = serverTime;
       serverClockTick = performance.now();
@@ -557,7 +652,14 @@
       else setStatus(error.message, true);
       return false;
     }
-    finally { busy = false; }
+    finally {
+      busy = false;
+      if (pendingSnapshot) {
+        const nextSnapshot = pendingSnapshot;
+        pendingSnapshot = null;
+        void refresh(nextSnapshot);
+      }
+    }
   }
 
   function openSlotDialog(slot) {
@@ -677,7 +779,11 @@
   window.addEventListener('online', refresh);
   window.addEventListener('offline', () => setStatus(t('connectionError'), true));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-  window.addEventListener('beforeunload', () => { clearInterval(refreshTimer); clearInterval(countdownTimer); });
+  window.addEventListener('beforeunload', () => {
+    clearTimeout(refreshTimer);
+    clearInterval(countdownTimer);
+    sequenceEventController?.abort();
+  });
 
   if (!seqId || !/^[A-Za-z0-9_-]{1,128}$/.test(seqId)) {
     setStatus(t('invalidSequence'), true);
