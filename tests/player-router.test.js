@@ -80,11 +80,17 @@ test('sequence state relay batches scoped change events and sends a public snaps
       this.options = options;
       this.readyState = 0;
       sockets.push(this);
-      setImmediate(() => { this.readyState = 1; this.emit('open'); });
+      setImmediate(() => {
+        this.readyState = 1;
+        this.emit('open');
+        this.welcomed = true;
+        this.emit('message', Buffer.from(JSON.stringify({ type: 'connection.established' })));
+      });
     }
     send(raw) {
       const message = JSON.parse(raw);
       if (message.type !== 'subscribe') return;
+      assert.equal(this.welcomed, true, 'subscribe only after authenticated welcome');
       setImmediate(() => {
         this.emit('message', Buffer.from(JSON.stringify({
           type: 'subscription.confirmed', scopes: [message.scope], rejectedScopes: []

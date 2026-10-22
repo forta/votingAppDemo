@@ -227,7 +227,8 @@
       } catch (error) {
         if (sequenceEventController.signal.aborted) break;
         sequenceEventsConnected = false;
-        $("sequence-event-connection").textContent = error.message;
+        const status = $("sequence-event-connection");
+        if (status) status.textContent = error.message;
         scheduleFallbackRefresh();
       }
       if (!sequenceEventController.signal.aborted) {
@@ -528,13 +529,13 @@
 
   function renderGame() {
     const container = $('game-view');
+    const eventStatus = $('sequence-event-status');
+    if (eventStatus?.parentElement === container) container.after(eventStatus);
     const hasWtsBoard = snapshot?.functionalityId === 'whattheshell'
       && Array.isArray(snapshot.board) && snapshot.board.length === 81;
     const ballot = snapshot?.ballot || snapshot?.lastCompletedBallot
       || (hasWtsBoard ? { options: [], voteCounts: [] } : null);
     if (!snapshot || !ballot) {
-      const eventStatus = $("sequence-event-status");
-      if (eventStatus?.parentElement === container) container.after(eventStatus);
       container.replaceChildren();
       container.hidden = true;
       lastCountdownText = null;
