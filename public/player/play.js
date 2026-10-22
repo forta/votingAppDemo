@@ -17,6 +17,8 @@
   let selectedRenderer = ['generic', 'ink', 'whattheshell'].includes(explicitView) ? explicitView : 'generic';
   let snapshot = null;
   let selectedSlot = null;
+  let slotExpired = false;
+  let voteFailure = null;
   let dialogSlot = null;
   let busy = false;
   let restoredSelection = false;
@@ -177,7 +179,7 @@
     if (syncStarted) return;
     syncStarted = true;
     scheduleFallbackRefresh();
-    countdownTimer = setInterval(renderCountdown, 250);
+    countdownTimer = setInterval(() => { renderCountdown(); checkSlotExpiry(); }, 250);
   }
 
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -277,6 +279,20 @@
     }
     element.classList.toggle('expired', expired);
     if (label !== lastCountdownText) { element.textContent = label; lastCountdownText = label; }
+  }
+
+  function checkSlotExpiry() {
+    if (!selectedSlot || busy) return;
+    const expiry = Date.parse(selectedSlot.expiresAt);
+    if (!Number.isFinite(expiry) || expiry > serverClockMs + performance.now() - serverClockTick) return;
+    selectedSlot = null;
+    slotExpired = true;
+    voteFailure = null;
+    saveSelection();
+    setStatus(t('slotExpired'), true);
+    renderSlots();
+    renderGame();
+    void refresh();
   }
 
   function createTurnHeading(container, active, turn, showLastAction = false) {
@@ -384,12 +400,12 @@
     narrative.className = 'story-text';
     appendTextParagraphs(narrative, ballot.description);
     container.append(narrative);
-    if (active) appendTimer(container, ballot);
     const notice = document.createElement('p');
     notice.id = 'notice';
     notice.setAttribute('role', 'status');
     const isOpen = canVote(ballot);
-    notice.textContent = selectedSlot?.votedBallotId === ballot.ballotId ? t('voteAccepted')
+    notice.textContent = voteFailure?.ballotId === ballot.ballotId ? voteFailure.message
+      : selectedSlot?.votedBallotId === ballot.ballotId ? t('voteAccepted')
       : isOpen ? t('votePrompt') : active ? selectedSlot ? t('waitingForResolution') : t('claimBeforeVote')
         : snapshot.sequenceState === 'finished' ? t('gameFinished') : t('waitingNext');
     container.append(notice);
@@ -450,7 +466,13 @@
       const choice = optionsByCell.get(index);
       appendVoteCount(cell, choice === undefined ? 0 : voteCounts.get(choice), label);
       cell.disabled = Boolean(piece) || choice === undefined || !canVote(ballot);
-      if (!cell.disabled && selectedSlot?.proposalCell === index) cell.classList.add('selected');
+      if (selectedSlot?.proposalCell === index && selectedSlot.votedBallotId === ballot?.ballotId) {
+        cell.classList.add('selected');
+      } else if (selectedSlot?.proposalCell === index && selectedSlot.votedBallotId === snapshot.lastCompletedBallot?.ballotId) {
+        cell.classList.add('previous-selected');
+        cell.title = t('previousVoteCell');
+        cell.setAttribute('aria-label', t('previousVoteCell') + ': ' + label);
+      }
       cell.onclick = () => { if (choice !== undefined) castVote(ballot, choice, index); };
       board.append(cell);
     });
@@ -465,7 +487,6 @@
     result.className = 'result-line';
     result.textContent = wtsResultText();
     container.append(result);
-    if (active) appendTimer(container, ballot);
     const acknowledgement = active && ballot.options?.length === 1 && !/^\d+$/.test(String(ballot.options[0].text ?? ''))
       && Array.isArray(snapshot.board) && snapshot.board.length === 81;
     if (acknowledgement && selectedSlot) {
@@ -479,7 +500,8 @@
     const notice = document.createElement('p');
     notice.id = 'notice';
     notice.setAttribute('role', 'status');
-    notice.textContent = selectedSlot?.votedBallotId === ballot?.ballotId ? t('voteAccepted')
+    notice.textContent = ballot && voteFailure?.ballotId === ballot.ballotId ? voteFailure.message
+      : selectedSlot?.votedBallotId === ballot?.ballotId ? t('voteAccepted')
       : canVote(ballot) ? t('votePrompt') : active ? t('waitingForResolution')
         : !snapshot.ballot && !snapshot.lastCompletedBallot ? t('waitingRunner') : t('waitingNext');
     container.append(notice);
@@ -548,6 +570,7 @@
     const normalizedHandler = handler === 'whattheshell' ? 'whattheshell' : handler === 'ink' ? 'ink' : 'generic';
     createTurnHeading(container, active, ballot.turn, normalizedHandler === 'ink');
     if (normalizedHandler === 'whattheshell') appendLastAction(container);
+    if (active) appendTimer(container, ballot);
     if (normalizedHandler === 'whattheshell' && !isWtsCompatible(ballot)) {
       if (!snapshot.functionalityId) {
         selectedRenderer = 'generic';
@@ -606,19 +629,23 @@
     }
     busy = true;
     try {
-      snapshot = incomingSnapshot || await command('public', { seq: seqId });
+      const nextSnapshot = incomingSnapshot || await command('public', { seq: seqId });
+      if (snapshot && Date.parse(nextSnapshot.serverTime) < Date.parse(snapshot.serverTime)) return true;
+      snapshot = nextSnapshot;
       backgroundRefreshFailures = 0;
       void connectSequenceStateEvents();
       const serverTime = Date.parse(snapshot.serverTime);
       if (Number.isFinite(serverTime)) serverClockMs = serverTime;
       serverClockTick = performance.now();
-      if (selectedSlot && !restoredSelection) {
-        restoredSelection = true;
+      if (selectedSlot) {
         const slot = snapshot.slots?.find(item => item.slotNumber === selectedSlot.slotNumber);
         if (!slot?.occupied || Date.parse(slot.expiresAt) <= serverClockMs) {
           selectedSlot = null;
+          slotExpired = true;
+          voteFailure = null;
           saveSelection();
-        } else {
+        } else if (!restoredSelection) {
+          restoredSelection = true;
           try {
             selectedSlot = { ...selectedSlot, ...await command('recover-public', {
               seq: seqId, slot: selectedSlot.slotNumber, pin: selectedSlot.pin
@@ -626,10 +653,11 @@
             saveSelection();
           } catch (error) {
             if (error.code === 'INCOMPLETE_RESPONSE') restoredSelection = false;
-            else { selectedSlot = null; saveSelection(); }
+            else { selectedSlot = null; slotExpired = true; saveSelection(); }
           }
         }
       }
+      if (voteFailure && voteFailure.ballotId !== snapshot.ballot?.ballotId) voteFailure = null;
       const handler = snapshot.functionalityId || selectedRenderer || 'generic';
       const normalizedHandler = handler === 'whattheshell' ? 'whattheshell' : handler === 'ink' ? 'ink' : 'generic';
       if (!runnerAttempted && new URLSearchParams(location.search).get('runner') === 'multibot'
@@ -664,7 +692,7 @@
       sequenceInfo.append(sequenceTitle, sequenceState, createCopyButton(seqId));
       $('start').hidden = !(['waiting', 'paused'].includes(state) && selectedSlot && !snapshot.ballot);
       $('start').textContent = t(state === 'paused' ? 'resumeGame' : 'startGame');
-      setStatus(runnerMessage || t(state === 'waiting' ? 'waitingToStart' : state === 'paused' ? 'paused' : state === 'finished' ? 'gameFinished' : 'connected'), runnerFailed);
+      setStatus(slotExpired ? t('slotExpired') : runnerMessage || t(state === 'waiting' ? 'waitingToStart' : state === 'paused' ? 'paused' : state === 'finished' ? 'gameFinished' : 'connected'), slotExpired || runnerFailed);
       renderSlots();
       renderGame();
       if ($('access-dialog').open) $('access-dialog').close();
@@ -715,6 +743,7 @@
         result = await command('claim-reserved-public', { ...fields, pin });
       } else result = await command('claim-public', { ...fields, alias: $('alias').value.trim() });
       selectedSlot = { ...result, slotNumber: dialogSlot.slotNumber, pin: result.pin || pin };
+      slotExpired = false;
       saveSelection();
       $('slot-dialog').close();
       if (result.pin) alert(t('pinNotice', { pin: result.pin }));
@@ -734,6 +763,7 @@
         seq: seqId, slot: selectedSlot.slotNumber, occupation: selectedSlot.occupationId,
         pin: selectedSlot.pin, ballot: ballot.ballotId, ...(abstain ? {} : { choice: choiceId }), revision: selectedSlot.revision
       });
+      voteFailure = null;
       selectedSlot = { ...selectedSlot, revision: result.revision, expiresAt: result.expiresAt,
         votedBallotId: ballot.ballotId, proposalCell,
         proposalChoiceId: abstain ? null : result.choiceId, abstainedBallotId: abstain ? ballot.ballotId : null };
@@ -741,10 +771,11 @@
       $('notice').textContent = t('voteAccepted');
     } catch (error) {
       if (error.code === 'INCOMPLETE_RESPONSE') restoredSelection = false;
+      voteFailure = { ballotId: ballot.ballotId, message: error.message };
       const notice = $('notice');
       if (notice) notice.textContent = error.message;
     }
-    finally { busy = false; await refresh(); }
+    finally { busy = false; await refresh(); scheduleFallbackRefresh(3000); }
   }
 
   $('start').onclick = async () => {
